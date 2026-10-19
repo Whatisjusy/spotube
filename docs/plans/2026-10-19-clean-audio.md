@@ -75,11 +75,11 @@ best quality. The 10th song fell back to AAC via Phase 1.
 
 File: `lib/services/sourced_track/sourced_track.dart`.
 
-- [ ] Always rank. Remove the English-only skip in `fetchSiblings`.
-- [ ] Drop implausible results first: title must contain the song name (or
+- [x] Always rank. Remove the English-only skip in `fetchSiblings`.
+- [x] Drop implausible results first: title must contain the song name (or
       the reverse) after stripping punctuation and case. This guards the
       ISRC search, which returns random videos for unknown codes.
-- [ ] Score. Suggested weights, tune after testing:
+- [x] Score. Suggested weights, tune after testing:
       - channel ends with " - Topic": +6
       - title has "official audio", "audio", "lyric", "lyrics", "visualizer":
         +3
@@ -92,13 +92,24 @@ File: `lib/services/sourced_track/sourced_track.dart`.
       - title has "live", "remix", "cover", "slowed", "sped up", "8d",
         "nightcore", "reaction", "karaoke", "instrumental" (when the Spotify
         title does not): -5 each
-- [ ] Keep the current regex only as a fallback for plugins that do not
+- [x] Keep the current regex only as a fallback for plugins that do not
       send a channel name.
-- [ ] Verify: for 10 songs that today play a music video (query
+- [x] Verify: for 10 songs that today play a music video (query
       `source_match_table` for "Official Video"), clear their cache row,
       replay, and check the new pick is Topic or Official Audio.
 
 Estimate: 1 h.
+
+Done 2026-10-19. Only YouTube results (link contains youtube.com/youtu.be or
+id starts with `youtube:`) are filtered and scored; Monochrome / hifi-api
+matches keep the plugin's order and stay first, so FLAC still wins. Match
+lengths arrive in mixed units (YouTube Audio: seconds, Monochrome: ms) and
+are guessed from size (`matchSeconds`). Verified with 7 unit tests in
+`test/services/sourced_track/rank_results_test.dart` (Topic > lyrics >
+official video > live; bad-ISRC junk dropped; FLAC matches untouched;
+"Remix" in the Spotify title not penalised; non-English titles ranked).
+Live ranking output logs as `Ranked YouTube results for "<song>": [score] title (channel) | ...`.
+Not yet tuned against real YouTube-fallback plays; see Phase 9.
 
 ### Phase 4. Search YouTube Music "Songs" instead of plain YouTube
 

@@ -15,7 +15,6 @@ import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/metadata/errors/exceptions.dart';
 
 import 'package:spotube/services/sourced_track/exceptions.dart';
-import 'package:spotube/utils/service_utils.dart';
 
 final officialMusicRegex = RegExp(
   r"official\s(video|audio|music\svideo|lyric\svideo|visualizer)",
@@ -102,53 +101,153 @@ class SourcedTrack extends BasicSourcedTrack {
     return sourcedTrack;
   }
 
+  /// Title words that mark a version the listener did not ask for, unless
+  /// the Spotify title itself carries the word.
+  static const wrongVersionWords = [
+    "live",
+    "remix",
+    "cover",
+    "slowed",
+    "sped up",
+    "8d",
+    "nightcore",
+    "reaction",
+    "karaoke",
+    "instrumental",
+  ];
+
+  static const musicVideoWords = [
+    "official video",
+    "music video",
+    "official music video",
+  ];
+
+  static const cleanAudioWords = [
+    "official audio",
+    "audio",
+    "lyric",
+    "lyrics",
+    "visualizer",
+    "visualiser",
+  ];
+
+  /// Lowercases and strips punctuation so titles compare loosely:
+  /// "Jul - C'est La Cité (Audio)" -> "jul cest la cite audio".
+  static String normalize(String text) {
+    return text
+        .toLowerCase()
+        .replaceAll(RegExp(r"[^\p{L}\p{N}\s]", unicode: true), "")
+        .replaceAll(RegExp(r"\s+"), " ")
+        .trim();
+  }
+
+  static bool isYouTubeMatch(SpotubeAudioSourceMatchObject m) {
+    final uri = m.externalUri.toLowerCase();
+    return uri.contains("youtube.com") ||
+        uri.contains("youtu.be") ||
+        m.id.startsWith("youtube:");
+  }
+
+  /// Plugins send the match length as a bare number that the model decodes
+  /// as microseconds, but YouTube Audio sends seconds and Monochrome sends
+  /// milliseconds. Guess the unit from the size; music is never 10 h long.
+  static double matchSeconds(SpotubeAudioSourceMatchObject m) {
+    final raw = m.duration.inMicroseconds;
+    if (raw <= 0) return 0;
+    if (raw < 36000) return raw.toDouble(); // seconds (< 10 h)
+    if (raw < 36000 * 1000) return raw / 1000; // milliseconds
+    return raw / 1000000; // microseconds
+  }
+
+  /// Scores one YouTube result against the Spotify track. Higher is better.
+  /// Rewards the label's own upload (" - Topic", "Official Audio", lyric
+  /// videos, matching length) and penalises music videos and other versions.
+  static int scoreMatch(
+    SpotubeAudioSourceMatchObject m,
+    SpotubeFullTrackObject track,
+  ) {
+    final title = normalize(m.title);
+    final rawTitle = m.title.toLowerCase();
+    final trackName = normalize(track.name);
+    final trackNameLower = track.name.toLowerCase();
+    final channel = m.artists.firstOrNull ?? "";
+    final channelNorm = normalize(channel)
+        .replaceAll(RegExp(r"\b(topic|vevo|official)\b"), "")
+        .trim();
+
+    var score = 0;
+
+    if (channel.trim().toLowerCase().endsWith("- topic")) score += 6;
+
+    if (cleanAudioWords.any((w) => rawTitle.contains(w))) score += 3;
+
+    if (title.contains(trackName)) score += 3;
+
+    for (final artist in track.artists) {
+      final name = normalize(artist.name);
+      if (name.isEmpty) continue;
+      if (title.contains(name)) score += 1;
+      if (channelNorm == name || channelNorm.contains(name)) score += 2;
+    }
+
+    if (track.durationMs > 0) {
+      final seconds = matchSeconds(m);
+      if (seconds > 0) {
+        final diff = (seconds - track.durationMs / 1000).abs();
+        if (diff <= 2) {
+          score += 3;
+        } else if (diff <= 5) {
+          score += 1;
+        } else if (diff > 10) {
+          score -= 4;
+        }
+      }
+    }
+
+    if (musicVideoWords.any((w) => rawTitle.contains(w))) score -= 3;
+
+    for (final w in wrongVersionWords) {
+      if (rawTitle.contains(w) && !trackNameLower.contains(w)) score -= 5;
+    }
+
+    // Plugins that send no channel name: fall back to the old title check.
+    if (channel.isEmpty && officialMusicRegex.hasMatch(rawTitle)) score += 1;
+
+    return score;
+  }
+
+  /// Orders search results so the cleanest match for [track] comes first.
+  ///
+  /// Only YouTube results are scored; anything else (Monochrome, hifi-api)
+  /// keeps the plugin's order and stays ahead of them. YouTube results whose
+  /// title shares nothing with the song name are dropped, unless that would
+  /// drop everything, because an ISRC search for an unknown code returns
+  /// unrelated videos.
   static List<SpotubeAudioSourceMatchObject> rankResults(
     List<SpotubeAudioSourceMatchObject> results,
     SpotubeFullTrackObject track,
   ) {
-    return results
-        .map((sibling) {
-          int score = 0;
+    final others = results.where((m) => !isYouTubeMatch(m)).toList();
+    final youtube = results.where(isYouTubeMatch).toList();
+    if (youtube.isEmpty) return others;
 
-          for (final artist in track.artists) {
-            final isSameChannelArtist =
-                sibling.artists.any((a) => a.toLowerCase() == artist.name);
+    final trackName = normalize(track.name);
+    var plausible = youtube.where((m) {
+      final title = normalize(m.title);
+      return trackName.isEmpty ||
+          title.contains(trackName) ||
+          trackName.contains(title);
+    }).toList();
+    if (plausible.isEmpty) plausible = youtube;
 
-            if (isSameChannelArtist) {
-              score += 1;
-            }
+    final scored = plausible
+        .mapIndexed((i, m) => (index: i, match: m, score: scoreMatch(m, track)))
+        .sorted((a, b) {
+      final byScore = b.score.compareTo(a.score);
+      return byScore != 0 ? byScore : a.index.compareTo(b.index);
+    });
 
-            final titleContainsArtist =
-                sibling.title.toLowerCase().contains(artist.name.toLowerCase());
-
-            if (titleContainsArtist) {
-              score += 1;
-            }
-          }
-
-          final titleContainsTrackName =
-              sibling.title.toLowerCase().contains(track.name.toLowerCase());
-
-          final hasOfficialFlag =
-              officialMusicRegex.hasMatch(sibling.title.toLowerCase());
-
-          if (titleContainsTrackName) {
-            score += 3;
-          }
-
-          if (hasOfficialFlag) {
-            score += 1;
-          }
-
-          if (hasOfficialFlag && titleContainsTrackName) {
-            score += 2;
-          }
-
-          return (sibling: sibling, score: score);
-        })
-        .sorted((a, b) => b.score.compareTo(a.score))
-        .map((e) => e.sibling)
-        .toList();
+    return [...others, ...scored.map((e) => e.match)];
   }
 
   static Future<List<SpotubeAudioSourceMatchObject>> fetchSiblings({
@@ -161,17 +260,17 @@ class SourcedTrack extends BasicSourcedTrack {
       throw MetadataPluginException.noDefaultAudioSourcePlugin();
     }
 
-    final videoResults = <SpotubeAudioSourceMatchObject>[];
-
     final searchResults = await audioSource.audioSource.matches(query);
+    final ranked = rankResults(searchResults, query).toSet().toList();
 
-    if (ServiceUtils.onlyContainsEnglish(query.name)) {
-      videoResults.addAll(searchResults);
-    } else {
-      videoResults.addAll(rankResults(searchResults, query));
+    final top = ranked.where(isYouTubeMatch).take(3).toList();
+    if (top.isNotEmpty) {
+      AppLogger.log.i(
+        "Ranked YouTube results for \"${query.name}\": ${top.map((m) => "[${scoreMatch(m, query)}] ${m.title} (${m.artists.join(", ")})").join(" | ")}",
+      );
     }
 
-    return videoResults.toSet().toList();
+    return ranked;
   }
 
   Future<SourcedTrack> copyWithSibling() async {

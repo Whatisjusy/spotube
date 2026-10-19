@@ -166,8 +166,12 @@ result for a Monochrome/hifi match, leaving the saved match alone. A plugin
 error on a YouTube match also falls through to the engine; an error on a
 non-YouTube match still surfaces. Elapsed ms for every plugin call is logged
 at debug level to tune the 4 s. Verified with 5 unit tests (16 total).
-The /etc/hosts live test is NOT done: it needs sudo, and relaunching the
-debug app would kill the instance another session is running.
+The /etc/hosts live test is not done (needs sudo), but the path fired on
+its own at 20:09: "bLAcK oPs (m@n!a)" (The Pretty Wild) has no row in
+`source_match_table` yet played, which only the matches-timeout path does
+(obscure track: the plugin's Monochrome -> hifi-api -> YouTube cascade took
+over 4 s). Still to check once the console is readable: the warning line
+and elapsed-ms lines.
 
 ### Phase 6. Prefer webm (Opus) over mp4 on YouTube
 
@@ -197,9 +201,9 @@ player. Label logic is in `lib/services/sourced_track/source_label.dart`
 matched title has "official video" / "music video". Tap opens
 `SiblingTracksSheet` (popover on wide screens, route on phones). Tooltip
 shows the matched title, channel and source id. Label logic unit-tested.
-Live check (pill text changes between a FLAC and a YouTube song) NOT done:
-another session's database migration (`database.steps.dart`) was mid-edit
-and broke the build.
+Seen live at 20:09 (screenshot): "AAC 571k" next to the title in the
+bottom bar for a YouTube-sourced song, grey (not a music video). FLAC label
+and the red tint not yet seen; do not skip the owner's song to check.
 
 ### Phase 8. One-tap "wrong version"
 
@@ -237,6 +241,14 @@ Estimate: 5 min.
 Total: about 5 hours of work, spread over two sessions.
 
 ## Risks worth knowing
+
+- **NewPipe on this Mac returns 0 audio-only streams** (checked 2026-10-19
+  20:10 with `NewPipeCLI --streams vAF0udoFJgA`: audioStreams 0,
+  videoStreams 1). The engine then serves a video stream, so YouTube-sourced
+  songs play the AAC track of a ~571 kbps 360p file. Audio is fine, data use
+  is not, and the Opus-before-AAC preference cannot apply. Upstream engine /
+  YouTube issue; options: switch engine to yt-dlp in Settings > Playback, or
+  wait for a NewPipe CLI update. The badge shows "AAC 571k" in this case.
 
 - Monochrome is one person's free service. If it dies, everything falls to
   YouTube clean audio. Phases 1, 3, 4 make that fallback good, so the app

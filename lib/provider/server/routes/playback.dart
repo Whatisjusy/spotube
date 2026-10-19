@@ -48,7 +48,7 @@ class ServerPlaybackRoutes {
     return join(
       await UserPreferencesNotifier.getMusicCacheDir(),
       ServiceUtils.sanitizeFilename(
-        '${track.query.name} - ${track.query.artists.map((d) => d.name).join(",")} (${track.info.id}).${track.qualityPreset!.getFileExtension()}',
+        '${track.query.name} - ${track.query.artists.map((d) => d.name).join(",")} (${track.info.id}).${track.activeFileExtension}',
       ),
     );
   }
@@ -94,7 +94,7 @@ class ServerPlaybackRoutes {
       return dio_lib.Response(
         statusCode: 200,
         headers: Headers.fromMap({
-          "content-type": ["audio/${track.qualityPreset!.name}"],
+          "content-type": ["audio/${track.activeContainer}"],
           "content-length": ["$fileLength"],
           "accept-ranges": ["bytes"],
           "content-range": ["bytes 0-$fileLength/$fileLength"],
@@ -143,7 +143,7 @@ class ServerPlaybackRoutes {
       return dio_lib.Response<Uint8List>(
         statusCode: 200,
         headers: Headers.fromMap({
-          "content-type": ["audio/${track.qualityPreset!.name}"],
+          "content-type": ["audio/${track.activeContainer}"],
           "content-length": ["${cachedFileLength - 1}"],
           "accept-ranges": ["bytes"],
           "content-range": [
@@ -247,7 +247,7 @@ class ServerPlaybackRoutes {
 
         await trackPartialCacheFile.rename(trackCacheFile.path);
 
-        if (track.qualityPreset!.getFileExtension() == "weba") return;
+        if (track.activeFileExtension == "weba") return;
 
         final imageBytes = await ServiceUtils.downloadImage(
           track.query.album.images.asUrlString(

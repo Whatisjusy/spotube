@@ -298,21 +298,41 @@ class SourcedTrack extends BasicSourcedTrack {
     return sourcedTrack;
   }
 
-  String? get url {
+  /// The stream that will actually be played for the current streaming
+  /// settings, after any format fallback.
+  SpotubeAudioSourceStreamObject? get activeStream {
     final preferences = ref.read(audioSourcePresetsProvider);
 
-    return getUrlOfQuality(
+    return getStreamOfQuality(
       preferences.presets[preferences.selectedStreamingContainerIndex],
       preferences.selectedStreamingQualityIndex,
     );
   }
 
-  /// Returns the URL of the track based on the codec and quality preferences.
-  /// If an exact match is not found, it will return the closest match based on
-  /// the user's audio quality preference.
+  String? get url => activeStream?.url;
+
+  /// Container of the stream actually being played (falls back to the chosen
+  /// preset name when no stream is available yet).
+  String get activeContainer => activeStream?.container ?? qualityPreset!.name;
+
+  /// File extension matching [activeContainer].
+  String get activeFileExtension =>
+      activeStream?.fileExtension ?? qualityPreset!.getFileExtension();
+
+  /// Containers tried, in order, when no stream matches the chosen one.
+  /// Lossless first, then Opus (webm), then AAC (mp4).
+  static const fallbackContainers = ["flac", "webm", "mp4"];
+
+  /// Remembers which fallbacks were already logged for this track so the
+  /// `url` getter (called many times per play) logs each one only once.
+  final Set<String> _loggedFallbacks = {};
+
+  /// Returns the stream closest to the chosen container and quality.
   ///
-  /// If no sources match the codec, it will return the first or last source
-  /// based on the user's audio quality preference.
+  /// If no stream has the chosen container (e.g. FLAC chosen but the song
+  /// only exists on YouTube), falls back through [fallbackContainers] and
+  /// finally to any container at all, so a song always plays when it has
+  /// at least one stream. Returns null only when there are no streams.
   SpotubeAudioSourceStreamObject? getStreamOfQuality(
     SpotubeAudioSourceContainerPreset preset,
     int qualityIndex,
@@ -321,42 +341,87 @@ class SourcedTrack extends BasicSourcedTrack {
 
     final quality = preset.qualities[qualityIndex];
 
-    final exactMatch = sources.firstWhereOrNull(
-      (source) {
-        if (source.container != preset.name) return false;
-
-        if (quality case SpotubeAudioLosslessContainerQuality()) {
-          return source.sampleRate == quality.sampleRate &&
-              source.bitDepth == quality.bitDepth;
-        } else {
-          return source.bitrate ==
-              (quality as SpotubeAudioLossyContainerQuality).bitrate;
-        }
-      },
-    );
-
-    if (exactMatch != null) {
-      return exactMatch;
+    final wanted = sources.where((s) => s.container == preset.name).toList();
+    if (wanted.isNotEmpty) {
+      return _closestStream(wanted, quality);
     }
 
-    // Find the preset with closest quality to the supplied quality
-    return sources.where((source) {
-      return source.container == preset.name;
-    }).reduce((prev, curr) {
-      if (quality is SpotubeAudioLosslessContainerQuality) {
-        final prevDiff = ((prev.sampleRate ?? 0) - quality.sampleRate).abs() +
-            ((prev.bitDepth ?? 0) - quality.bitDepth).abs();
-        final currDiff = ((curr.sampleRate ?? 0) - quality.sampleRate).abs() +
-            ((curr.bitDepth ?? 0) - quality.bitDepth).abs();
-        return currDiff < prevDiff ? curr : prev;
-      } else {
-        final prevDiff = ((prev.bitrate ?? 0) -
-                (quality as SpotubeAudioLossyContainerQuality).bitrate)
-            .abs();
-        final currDiff = ((curr.bitrate ?? 0) - quality.bitrate).abs();
-        return currDiff < prevDiff ? curr : prev;
+    final order = [
+      ...fallbackContainers.where((c) => c != preset.name),
+      ...sources.map((s) => s.container).toSet()
+        ..removeAll(fallbackContainers)
+        ..remove(preset.name),
+    ];
+
+    for (final container in order) {
+      final candidates = sources.where((s) => s.container == container);
+      if (candidates.isEmpty) continue;
+
+      final pick = _closestStream(candidates.toList(), quality);
+      if (_loggedFallbacks.add(container)) {
+        AppLogger.log.i(
+          "Format fallback for \"${query.name}\": wanted ${preset.name}, "
+          "got ${pick.container} ${pick.codec ?? ""} "
+          "${pick.bitrate != null ? "${(pick.bitrate! / 1000).round()}k" : ""}"
+              .trim(),
+        );
       }
-    });
+      return pick;
+    }
+
+    return null;
+  }
+
+  /// Picks the stream closest to [quality] from a non-empty [candidates] list.
+  /// Exact match wins. If the quality kind does not match the streams
+  /// (lossless wanted, lossy available, or the reverse) the best available
+  /// stream is returned.
+  static SpotubeAudioSourceStreamObject _closestStream(
+    List<SpotubeAudioSourceStreamObject> candidates,
+    Object quality,
+  ) {
+    assert(candidates.isNotEmpty);
+
+    if (quality is SpotubeAudioLosslessContainerQuality) {
+      final exact = candidates.firstWhereOrNull((s) =>
+          s.sampleRate == quality.sampleRate && s.bitDepth == quality.bitDepth);
+      if (exact != null) return exact;
+
+      final lossless = candidates.where((s) => s.sampleRate != null).toList();
+      if (lossless.isNotEmpty) {
+        return lossless.reduce((prev, curr) {
+          final prevDiff =
+              ((prev.sampleRate ?? 0) - quality.sampleRate).abs() +
+                  ((prev.bitDepth ?? 0) - quality.bitDepth).abs();
+          final currDiff =
+              ((curr.sampleRate ?? 0) - quality.sampleRate).abs() +
+                  ((curr.bitDepth ?? 0) - quality.bitDepth).abs();
+          return currDiff < prevDiff ? curr : prev;
+        });
+      }
+      // Lossless wanted but only lossy streams here: take the best bitrate.
+      return candidates.reduce(
+          (prev, curr) => (curr.bitrate ?? 0) > (prev.bitrate ?? 0) ? curr : prev);
+    }
+
+    final lossy = quality as SpotubeAudioLossyContainerQuality;
+    final exact = candidates.firstWhereOrNull((s) => s.bitrate == lossy.bitrate);
+    if (exact != null) return exact;
+
+    final withBitrate = candidates.where((s) => s.bitrate != null).toList();
+    if (withBitrate.isNotEmpty) {
+      return withBitrate.reduce((prev, curr) {
+        final prevDiff = ((prev.bitrate ?? 0) - lossy.bitrate).abs();
+        final currDiff = ((curr.bitrate ?? 0) - lossy.bitrate).abs();
+        return currDiff < prevDiff ? curr : prev;
+      });
+    }
+    // Lossy wanted but only lossless (no bitrate) streams here: best one.
+    return candidates.reduce((prev, curr) =>
+        ((curr.sampleRate ?? 0) + (curr.bitDepth ?? 0)) >
+                ((prev.sampleRate ?? 0) + (prev.bitDepth ?? 0))
+            ? curr
+            : prev);
   }
 
   String? getUrlOfQuality(

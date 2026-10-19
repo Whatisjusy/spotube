@@ -189,19 +189,22 @@ class DownloadManagerNotifier extends Notifier<List<DownloadTask>> {
       final downloadLocation = ref.read(
           userPreferencesProvider.select((value) => value.downloadLocation));
 
-      final url = track.getUrlOfQuality(
+      final stream = track.getStreamOfQuality(
         container,
         presets.selectedDownloadingQualityIndex,
       );
 
-      if (url == null) {
+      if (stream == null) {
         throw Exception("No download URL found for selected codec");
       }
+      final url = stream.url;
 
+      // Use the container we actually got, which may differ from the chosen
+      // one when the song has no stream in that format (format fallback).
       final savePath = join(
         downloadLocation,
         ServiceUtils.sanitizeFilename(
-          "${track.query.name} - ${track.query.artists.map((e) => e.name).join(", ")}.${container.getFileExtension()}",
+          "${track.query.name} - ${track.query.artists.map((e) => e.name).join(", ")}.${stream.fileExtension}",
         ),
       );
 

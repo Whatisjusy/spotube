@@ -108,3 +108,12 @@ class SpotubeAudioSourceStreamObject with _$SpotubeAudioSourceStreamObject {
   factory SpotubeAudioSourceStreamObject.fromJson(Map<String, dynamic> json) =>
       _$SpotubeAudioSourceStreamObjectFromJson(json);
 }
+
+extension SpotubeAudioSourceStreamObjectExt on SpotubeAudioSourceStreamObject {
+  /// File extension for this stream's container (mp4 -> m4a, webm -> weba).
+  String get fileExtension => switch (container) {
+        "mp4" => "m4a",
+        "webm" => "weba",
+        _ => container,
+      };
+}

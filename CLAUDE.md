@@ -47,7 +47,9 @@ make migrate                      # drift DB migrations after schema changes
   before judging queue behaviour. `Debug.xcconfig` only renames the app to "Spotube Dev"; it does
   not split the data.
 - **The app's own log is `~/Library/Logs/.spotube_logs`** (hidden file, multi-MB, from
-  `lib/services/logger/logger.dart`). Tally it by HTTP status and calling function before
+  `lib/services/logger/logger.dart`). **Release builds only.** Debug builds log to the console,
+  so run `fvm flutter run -d macos > some.log 2>&1` and read that file (strip ANSI with
+  `sed 's/\x1b\[[0-9;]*m//g'`). Format fallbacks log as `Format fallback for "<song>": wanted flac, got mp4 aac 165k`. Tally it by HTTP status and calling function before
   theorising about "error / retry" boxes: on 17-19 Oct it showed 578x 401 (expired Spotify login,
   one burst), 173x 429 (rate limit, mostly Liked Songs), ~110 dropped connections.
 - **Spotify data comes from a plugin, not this repo.** "Sonic Liberation / Spotify" 0.2.2, Hetu
@@ -78,3 +80,7 @@ make migrate                      # drift DB migrations after schema changes
   `PRODUCT_NAME[config=Debug]`). Project-level `Debug.xcconfig` is overridden by that target-level
   file, so put name overrides there. Same bundle id as the installed app, so login/settings are shared.
 - Local change: the Getting Started welcome screen never shows on launch (guard removed in `routes.dart`).
+- Clean-audio plan: `docs/plans/2026-10-19-clean-audio.md`. Phases 1 + 2 done 2026-10-19:
+  `getStreamOfQuality` falls back flac -> webm -> mp4 -> anything (never throws on an empty
+  list); first run with a plugin defaults to its lossless preset; audio source plugin is now
+  Lossless Sources (selected in `plugins_table`, not in SharedPreferences).

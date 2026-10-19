@@ -75,12 +75,51 @@ class AudioSourceAvailableQualityPresetsNotifier
             presets: audioSource.audioSource.supportedPresets,
           );
         } else {
+          // First run with this plugin: prefer lossless (FLAC) at its best
+          // quality when the plugin offers it, instead of the plugin's first
+          // (usually lossy) preset. Format fallback in SourcedTrack still
+          // plays lossy-only songs.
+          final presets = audioSource.audioSource.supportedPresets;
           state = AudioSourcePresetsState(
-            presets: audioSource.audioSource.supportedPresets,
+            presets: presets,
+            selectedStreamingContainerIndex: _preferredContainerIndex(presets),
+            selectedStreamingQualityIndex: _bestQualityIndex(
+              presets.elementAtOrNull(_preferredContainerIndex(presets)),
+            ),
           );
         }
       });
     });
+  }
+
+  /// Index of the first lossless preset, or 0 when there is none.
+  static int _preferredContainerIndex(
+    List<SpotubeAudioSourceContainerPreset> presets,
+  ) {
+    final i = presets
+        .indexWhere((p) => p is SpotubeAudioSourceContainerPresetLossless);
+    return i < 0 ? 0 : i;
+  }
+
+  /// Index of the highest quality in [preset] (most bits for lossless,
+  /// highest bitrate for lossy), or 0.
+  static int _bestQualityIndex(SpotubeAudioSourceContainerPreset? preset) {
+    if (preset == null || preset.qualities.isEmpty) return 0;
+    var best = 0;
+    num bestScore = -1;
+    for (var i = 0; i < preset.qualities.length; i++) {
+      final q = preset.qualities[i];
+      final score = switch (q) {
+        SpotubeAudioLosslessContainerQuality() => q.sampleRate * q.bitDepth,
+        SpotubeAudioLossyContainerQuality() => q.bitrate,
+        _ => 0,
+      };
+      if (score > bestScore) {
+        bestScore = score;
+        best = i;
+      }
+    }
+    return best;
   }
 
   void setSelectedStreamingContainerIndex(int index) {

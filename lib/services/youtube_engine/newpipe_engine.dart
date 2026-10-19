@@ -148,5 +148,18 @@ class NewPipeEngine implements YouTubeEngine {
   }
 
   @override
+  Future<List<Video>> searchSongs(String query) async {
+    final results = await NewPipeExtractor.search(
+      query,
+      contentFilters: [SearchContentFilters.musicSongs],
+    );
+
+    return results
+        .whereType<VideoSearchResultItem>()
+        .map((e) => _parseVideoResult(e))
+        .toList();
+  }
+
+  @override
   void dispose() {}
 }

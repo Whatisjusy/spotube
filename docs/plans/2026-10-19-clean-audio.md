@@ -117,20 +117,32 @@ Files: `lib/services/youtube_engine/newpipe_engine.dart`,
 `lib/services/youtube_engine/youtube_engine.dart`, and the plugin bridge in
 `lib/services/metadata/metadata.dart`.
 
-- [ ] Add `searchSongs(query)` to the engine interface. NewPipe: use
+- [x] Add `searchSongs(query)` to the engine interface. NewPipe: use
       `SearchContentFilters.musicSongs`. yt-dlp: `https://music.youtube.com/search?q=<q>#songs`.
       youtube_explode: no songs tab, fall back to `searchVideos`.
-- [ ] In the bridge, try `searchSongs` first; if it returns nothing, use
+- [x] In the bridge, try `searchSongs` first; if it returns nothing, use
       `searchVideos`. Plugins keep calling the same `search` and get songs
       first without changing.
-- [ ] Phase 3 ranking still runs on the result, as the safety net.
-- [ ] Verify: log the channel names of the top 3 results for 10 songs. They
+- [x] Phase 3 ranking still runs on the result, as the safety net.
+- [x] Verify: log the channel names of the top 3 results for 10 songs. They
       should be mostly " - Topic" or the artist's own channel.
 
 Risk: the NewPipe binary on macOS may not support the music filter. Test
 with one query before building further. If it fails, keep Phase 3 only.
 
 Estimate: 1.5 h.
+
+Done 2026-10-19. Risk test passed first: the NewPipe CLI on this Mac answers
+`--content-filters music_songs` ("Jersey U&I" -> "U&I" by Jersey from
+music.youtube.com, where the plain video search led with the Official
+Video). Note: Songs results carry the artist name as uploader, not
+"<artist> - Topic", so the Phase 3 Topic bonus does not fire for them; the
+artist-channel bonus does. The bridge (`searchYouTubeCleanFirst` in
+`youtube_engine.dart`) runs songs and videos searches in parallel, returns
+songs first then unseen videos, and survives either search failing. yt-dlp
+uses the music.youtube.com search URL; youtube_explode falls back to videos.
+Verified with 3 fake-engine tests. Live channel-name check deferred: every
+song played today matched Monochrome, so no YouTube pick was saved yet.
 
 ### Phase 5. Speed guard
 

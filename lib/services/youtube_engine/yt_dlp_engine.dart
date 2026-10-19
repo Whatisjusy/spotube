@@ -147,5 +147,30 @@ class YtDlpEngine implements YouTubeEngine {
   }
 
   @override
+  Future<List<Video>> searchSongs(String query) async {
+    // yt-dlp understands YouTube Music search pages; "#songs" picks the tab.
+    final stdout = await YtDlp.instance.extractInfoString(
+      "https://music.youtube.com/search?q=${Uri.encodeQueryComponent(query)}#songs",
+      formatSpecifiers: "%()j",
+      extraArgs: [
+        "--skip-download",
+        "--no-check-certificate",
+        "--geo-bypass",
+        "--quiet",
+        "--ignore-errors",
+        "--flat-playlist",
+        "--playlist-end",
+        "10",
+      ],
+    );
+
+    final json = jsonDecode(
+      "[${stdout.split("\n").where((s) => s.trim().isNotEmpty).join(",")}]",
+    ) as List;
+
+    return json.map((e) => _parseInfo(e)).toList();
+  }
+
+  @override
   void dispose() {}
 }

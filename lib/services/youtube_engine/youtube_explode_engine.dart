@@ -213,6 +213,12 @@ class YouTubeExplodeEngine implements YouTubeEngine {
   }
 
   @override
+  Future<List<Video>> searchSongs(String query) {
+    // youtube_explode has no YouTube Music "Songs" tab.
+    return searchVideos(query);
+  }
+
+  @override
   Future<List<Video>> searchVideos(String query) async {
     await IsolatedYoutubeExplode.initialize();
 

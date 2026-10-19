@@ -84,7 +84,7 @@ class MetadataPlugin {
       createYoutubeEngine: () {
         return spotube_plugin.YouTubeEngine(
           search: (query) async {
-            final result = await youtubeEngine.searchVideos(query);
+            final result = await searchYouTubeCleanFirst(youtubeEngine, query);
             return result
                 .map((video) => {
                       'id': video.id.value,

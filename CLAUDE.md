@@ -9,6 +9,9 @@ Owner is non-technical. Explain simply. Target platforms: macOS and iPhone.
 - `.env` exists at repo root (gitignored). Keys are read at build time by `envied`
   into `lib/models/env.dart` → if you change `.env`, re-run build_runner.
 - CocoaPods installed via Homebrew.
+- **Rust is required** (plugins `metadata_god` and `flutter_discord_rpc` build via Cargokit).
+  Installed via `brew install rustup` + `rustup default stable`. PATH line is in `~/.zshrc`;
+  if a build says `rustup not found in PATH`, `export PATH="/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH"` first.
 - Xcode must be installed from the App Store for macOS/iOS builds (`mas install 497799835` needs an interactive sudo).
 
 ## Everyday commands
@@ -30,5 +33,8 @@ make migrate                      # drift DB migrations after schema changes
 - `skill-observations/` is excluded via `.git/info/exclude`.
 
 ## Gotchas
+- **Xcode 27 refuses minimum macOS < 12.0.** Upstream pins 10.15 and several pods pin 10.14/10.15.
+  Local fix (committed on `main`): `macos/Podfile` platform 12.0 + post_install forces
+  `MACOSX_DEPLOYMENT_TARGET=12.0` on every pod; `macos/Runner.xcodeproj` raised to 12.0. Keep this when rebasing.
 - Generated files are not committed upstream; after any pull run build_runner.
 - Last.fm keys in `.env` are empty, so scrobbling is off in local builds.

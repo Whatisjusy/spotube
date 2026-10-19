@@ -31,5 +31,22 @@
     "*.dart": "${capture}.g.dart,${capture}.freezed.dart"
   },
   "dart.flutterSdkPath": ".fvm/versions/3.35.2",
-  "makefile.configureOnOpen": false
+  "makefile.configureOnOpen": false,
+  "window.title": "Spotube  —  ${activeEditorShort}${separator}${dirty}",
+  "workbench.colorCustomizations": {
+    "titleBar.activeBackground": "#b45309",
+    "titleBar.inactiveBackground": "#b45309cc",
+    "titleBar.activeForeground": "#ffffff",
+    "titleBar.inactiveForeground": "#ffffffaa",
+    "titleBar.border": "#b45309",
+    "activityBar.background": "#b45309",
+    "activityBar.foreground": "#ffffff",
+    "activityBar.inactiveForeground": "#ffffff99",
+    "statusBar.background": "#b45309",
+    "statusBar.foreground": "#ffffff",
+    "statusBar.border": "#b45309",
+    "statusBarItem.hoverBackground": "#b45309cc",
+    "statusBarItem.remoteBackground": "#b45309",
+    "sash.hoverBorder": "#b45309"
+  }
 }

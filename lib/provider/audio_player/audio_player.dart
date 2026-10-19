@@ -35,6 +35,20 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
     );
   }
 
+  /// Position to seek to once the restored track has loaded (null = none).
+  Duration? _pendingRestorePosition;
+  DateTime _lastPositionSave = DateTime.fromMillisecondsSinceEpoch(0);
+  static const _positionSaveInterval = Duration(seconds: 5);
+
+  Future<void> _savePosition(Duration position) async {
+    _lastPositionSave = DateTime.now();
+    await _updatePlayerState(
+      AudioPlayerStateTableCompanion(
+        positionMs: Value(position.inMilliseconds),
+      ),
+    );
+  }
+
   Future<void> _syncSavedState() async {
     final database = ref.read(databaseProvider);
 
@@ -63,6 +77,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
 
     final tracks = playerState.tracks;
     final currentIndex = playerState.currentIndex;
+    final savedPosition = Duration(milliseconds: playerState.positionMs);
 
     if (tracks.isEmpty && state.tracks.isNotEmpty) {
       await _updatePlayerState(
@@ -76,6 +91,9 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
         tracks: tracks,
         currentIndex: currentIndex,
       );
+      if (savedPosition > Duration.zero) {
+        _pendingRestorePosition = savedPosition;
+      }
       await audioPlayer.openPlaylist(
         tracks.asMediaList(),
         initialIndex: currentIndex,
@@ -110,6 +128,11 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
           await _updatePlayerState(
             AudioPlayerStateTableCompanion(
               playing: Value(playing),
+              // Pausing is the usual last action before quitting, so save the
+              // exact spot instead of waiting for the next throttled write.
+              positionMs: (!playing && _pendingRestorePosition == null)
+                  ? Value(audioPlayer.position.inMilliseconds)
+                  : const Value.absent(),
             ),
           );
         } catch (e, stack) {
@@ -146,6 +169,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
         try {
           final tracks =
               playlist.medias.map((e) => SpotubeMedia.media(e).track).toList();
+          final trackChanged = playlist.index != state.currentIndex;
 
           state = state.copyWith(
             tracks: tracks,
@@ -156,8 +180,42 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
             AudioPlayerStateTableCompanion(
               currentIndex: Value(state.currentIndex),
               tracks: Value(state.tracks),
+              // A new track starts from the top; a stale position from the
+              // previous one must not survive a relaunch.
+              positionMs:
+                  trackChanged ? const Value(0) : const Value.absent(),
             ),
           );
+        } catch (e, stack) {
+          AppLogger.reportError(e, stack);
+        }
+      }),
+      audioPlayer.positionStream.listen((position) async {
+        try {
+          // Until the restored track has been seeked, mpv reports 0 and must
+          // not overwrite the saved spot.
+          if (_pendingRestorePosition != null) return;
+          if (DateTime.now().difference(_lastPositionSave) <
+              _positionSaveInterval) {
+            return;
+          }
+          await _savePosition(position);
+        } catch (e, stack) {
+          AppLogger.reportError(e, stack);
+        }
+      }),
+      audioPlayer.durationStream.listen((duration) async {
+        try {
+          final target = _pendingRestorePosition;
+          if (target == null || duration <= Duration.zero) return;
+          _pendingRestorePosition = null;
+          if (target < duration) {
+            await audioPlayer.seek(target);
+            AppLogger.log.i(
+              "Resumed last session at ${target.inSeconds}s "
+              "of ${duration.inSeconds}s",
+            );
+          }
         } catch (e, stack) {
           AppLogger.reportError(e, stack);
         }
@@ -438,7 +496,10 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
 
     state = state.copyWith(currentIndex: index);
     await _updatePlayerState(
-      AudioPlayerStateTableCompanion(currentIndex: Value(index)),
+      AudioPlayerStateTableCompanion(
+        currentIndex: Value(index),
+        positionMs: const Value(0),
+      ),
     );
   }
 

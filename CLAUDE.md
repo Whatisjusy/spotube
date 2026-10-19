@@ -80,6 +80,10 @@ make migrate                      # drift DB migrations after schema changes
   `PRODUCT_NAME[config=Debug]`). Project-level `Debug.xcconfig` is overridden by that target-level
   file, so put name overrides there. Same bundle id as the installed app, so login/settings are shared.
 - Local change: the Getting Started welcome screen never shows on launch (guard removed in `routes.dart`).
+- Resume where you left off: `position_ms` in `audio_player_state_table` (schema v11) is saved every 5 s
+  while playing and exactly on pause, reset to 0 on track change. On launch `_syncSavedState` stores it
+  in `_pendingRestorePosition` and seeks once `durationStream` reports the track loaded (log line
+  `Resumed last session at Ns of Ms`). Position writes are skipped until that seek has happened.
 - **Look: Everforest, copied from Feishin** (owner picked it from a mood board, 2026-10-19). Theme lives in
   `lib/themes/everforest.dart` (colours as a shadcn `ColorScheme`, Inter typography with Feishin's sizes,
   radius 0.35) and is wired in `main.dart`; glass surfaces are off (`surfaceOpacity: 1, surfaceBlur: 0`).

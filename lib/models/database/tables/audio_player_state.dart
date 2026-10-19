@@ -10,6 +10,10 @@ class AudioPlayerStateTable extends Table {
       .map(const SpotubeTrackObjectListConverter())
       .withDefault(const Constant("[]"))();
   IntColumn get currentIndex => integer().withDefault(const Constant(0))();
+
+  /// Playback position inside the current track, in milliseconds. Saved so a
+  /// relaunch resumes where the listener left off, not from 0:00.
+  IntColumn get positionMs => integer().withDefault(const Constant(0))();
 }
 
 class SpotubeTrackObjectListConverter

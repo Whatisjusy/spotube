@@ -2652,9 +2652,25 @@ class $AudioPlayerStateTableTable extends AudioPlayerStateTable
       type: DriftSqlType.int,
       requiredDuringInsert: false,
       defaultValue: const Constant(0));
+  static const VerificationMeta _positionMsMeta =
+      const VerificationMeta('positionMs');
   @override
-  List<GeneratedColumn> get $columns =>
-      [id, playing, loopMode, shuffled, collections, tracks, currentIndex];
+  late final GeneratedColumn<int> positionMs = GeneratedColumn<int>(
+      'position_ms', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        playing,
+        loopMode,
+        shuffled,
+        collections,
+        tracks,
+        currentIndex,
+        positionMs
+      ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -2687,6 +2703,12 @@ class $AudioPlayerStateTableTable extends AudioPlayerStateTable
           currentIndex.isAcceptableOrUnknown(
               data['current_index']!, _currentIndexMeta));
     }
+    if (data.containsKey('position_ms')) {
+      context.handle(
+          _positionMsMeta,
+          positionMs.isAcceptableOrUnknown(
+              data['position_ms']!, _positionMsMeta));
+    }
     return context;
   }
 
@@ -2714,6 +2736,8 @@ class $AudioPlayerStateTableTable extends AudioPlayerStateTable
               .read(DriftSqlType.string, data['${effectivePrefix}tracks'])!),
       currentIndex: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}current_index'])!,
+      positionMs: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}position_ms'])!,
     );
   }
 
@@ -2739,6 +2763,10 @@ class AudioPlayerStateTableData extends DataClass
   final List<String> collections;
   final List<SpotubeTrackObject> tracks;
   final int currentIndex;
+
+  /// Playback position inside the current track, in milliseconds. Saved so a
+  /// relaunch resumes where the listener left off, not from 0:00.
+  final int positionMs;
   const AudioPlayerStateTableData(
       {required this.id,
       required this.playing,
@@ -2746,7 +2774,8 @@ class AudioPlayerStateTableData extends DataClass
       required this.shuffled,
       required this.collections,
       required this.tracks,
-      required this.currentIndex});
+      required this.currentIndex,
+      required this.positionMs});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -2766,6 +2795,7 @@ class AudioPlayerStateTableData extends DataClass
           $AudioPlayerStateTableTable.$convertertracks.toSql(tracks));
     }
     map['current_index'] = Variable<int>(currentIndex);
+    map['position_ms'] = Variable<int>(positionMs);
     return map;
   }
 
@@ -2778,6 +2808,7 @@ class AudioPlayerStateTableData extends DataClass
       collections: Value(collections),
       tracks: Value(tracks),
       currentIndex: Value(currentIndex),
+      positionMs: Value(positionMs),
     );
   }
 
@@ -2793,6 +2824,7 @@ class AudioPlayerStateTableData extends DataClass
       collections: serializer.fromJson<List<String>>(json['collections']),
       tracks: serializer.fromJson<List<SpotubeTrackObject>>(json['tracks']),
       currentIndex: serializer.fromJson<int>(json['currentIndex']),
+      positionMs: serializer.fromJson<int>(json['positionMs']),
     );
   }
   @override
@@ -2807,6 +2839,7 @@ class AudioPlayerStateTableData extends DataClass
       'collections': serializer.toJson<List<String>>(collections),
       'tracks': serializer.toJson<List<SpotubeTrackObject>>(tracks),
       'currentIndex': serializer.toJson<int>(currentIndex),
+      'positionMs': serializer.toJson<int>(positionMs),
     };
   }
 
@@ -2817,7 +2850,8 @@ class AudioPlayerStateTableData extends DataClass
           bool? shuffled,
           List<String>? collections,
           List<SpotubeTrackObject>? tracks,
-          int? currentIndex}) =>
+          int? currentIndex,
+          int? positionMs}) =>
       AudioPlayerStateTableData(
         id: id ?? this.id,
         playing: playing ?? this.playing,
@@ -2826,6 +2860,7 @@ class AudioPlayerStateTableData extends DataClass
         collections: collections ?? this.collections,
         tracks: tracks ?? this.tracks,
         currentIndex: currentIndex ?? this.currentIndex,
+        positionMs: positionMs ?? this.positionMs,
       );
   AudioPlayerStateTableData copyWithCompanion(
       AudioPlayerStateTableCompanion data) {
@@ -2840,6 +2875,8 @@ class AudioPlayerStateTableData extends DataClass
       currentIndex: data.currentIndex.present
           ? data.currentIndex.value
           : this.currentIndex,
+      positionMs:
+          data.positionMs.present ? data.positionMs.value : this.positionMs,
     );
   }
 
@@ -2852,14 +2889,15 @@ class AudioPlayerStateTableData extends DataClass
           ..write('shuffled: $shuffled, ')
           ..write('collections: $collections, ')
           ..write('tracks: $tracks, ')
-          ..write('currentIndex: $currentIndex')
+          ..write('currentIndex: $currentIndex, ')
+          ..write('positionMs: $positionMs')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
-      id, playing, loopMode, shuffled, collections, tracks, currentIndex);
+  int get hashCode => Object.hash(id, playing, loopMode, shuffled, collections,
+      tracks, currentIndex, positionMs);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2870,7 +2908,8 @@ class AudioPlayerStateTableData extends DataClass
           other.shuffled == this.shuffled &&
           other.collections == this.collections &&
           other.tracks == this.tracks &&
-          other.currentIndex == this.currentIndex);
+          other.currentIndex == this.currentIndex &&
+          other.positionMs == this.positionMs);
 }
 
 class AudioPlayerStateTableCompanion
@@ -2882,6 +2921,7 @@ class AudioPlayerStateTableCompanion
   final Value<List<String>> collections;
   final Value<List<SpotubeTrackObject>> tracks;
   final Value<int> currentIndex;
+  final Value<int> positionMs;
   const AudioPlayerStateTableCompanion({
     this.id = const Value.absent(),
     this.playing = const Value.absent(),
@@ -2890,6 +2930,7 @@ class AudioPlayerStateTableCompanion
     this.collections = const Value.absent(),
     this.tracks = const Value.absent(),
     this.currentIndex = const Value.absent(),
+    this.positionMs = const Value.absent(),
   });
   AudioPlayerStateTableCompanion.insert({
     this.id = const Value.absent(),
@@ -2899,6 +2940,7 @@ class AudioPlayerStateTableCompanion
     required List<String> collections,
     this.tracks = const Value.absent(),
     this.currentIndex = const Value.absent(),
+    this.positionMs = const Value.absent(),
   })  : playing = Value(playing),
         loopMode = Value(loopMode),
         shuffled = Value(shuffled),
@@ -2911,6 +2953,7 @@ class AudioPlayerStateTableCompanion
     Expression<String>? collections,
     Expression<String>? tracks,
     Expression<int>? currentIndex,
+    Expression<int>? positionMs,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -2920,6 +2963,7 @@ class AudioPlayerStateTableCompanion
       if (collections != null) 'collections': collections,
       if (tracks != null) 'tracks': tracks,
       if (currentIndex != null) 'current_index': currentIndex,
+      if (positionMs != null) 'position_ms': positionMs,
     });
   }
 
@@ -2930,7 +2974,8 @@ class AudioPlayerStateTableCompanion
       Value<bool>? shuffled,
       Value<List<String>>? collections,
       Value<List<SpotubeTrackObject>>? tracks,
-      Value<int>? currentIndex}) {
+      Value<int>? currentIndex,
+      Value<int>? positionMs}) {
     return AudioPlayerStateTableCompanion(
       id: id ?? this.id,
       playing: playing ?? this.playing,
@@ -2939,6 +2984,7 @@ class AudioPlayerStateTableCompanion
       collections: collections ?? this.collections,
       tracks: tracks ?? this.tracks,
       currentIndex: currentIndex ?? this.currentIndex,
+      positionMs: positionMs ?? this.positionMs,
     );
   }
 
@@ -2970,6 +3016,9 @@ class AudioPlayerStateTableCompanion
     if (currentIndex.present) {
       map['current_index'] = Variable<int>(currentIndex.value);
     }
+    if (positionMs.present) {
+      map['position_ms'] = Variable<int>(positionMs.value);
+    }
     return map;
   }
 
@@ -2982,7 +3031,8 @@ class AudioPlayerStateTableCompanion
           ..write('shuffled: $shuffled, ')
           ..write('collections: $collections, ')
           ..write('tracks: $tracks, ')
-          ..write('currentIndex: $currentIndex')
+          ..write('currentIndex: $currentIndex, ')
+          ..write('positionMs: $positionMs')
           ..write(')'))
         .toString();
   }
@@ -5491,6 +5541,7 @@ typedef $$AudioPlayerStateTableTableCreateCompanionBuilder
   required List<String> collections,
   Value<List<SpotubeTrackObject>> tracks,
   Value<int> currentIndex,
+  Value<int> positionMs,
 });
 typedef $$AudioPlayerStateTableTableUpdateCompanionBuilder
     = AudioPlayerStateTableCompanion Function({
@@ -5501,6 +5552,7 @@ typedef $$AudioPlayerStateTableTableUpdateCompanionBuilder
   Value<List<String>> collections,
   Value<List<SpotubeTrackObject>> tracks,
   Value<int> currentIndex,
+  Value<int> positionMs,
 });
 
 class $$AudioPlayerStateTableTableFilterComposer
@@ -5539,6 +5591,9 @@ class $$AudioPlayerStateTableTableFilterComposer
 
   ColumnFilters<int> get currentIndex => $composableBuilder(
       column: $table.currentIndex, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get positionMs => $composableBuilder(
+      column: $table.positionMs, builder: (column) => ColumnFilters(column));
 }
 
 class $$AudioPlayerStateTableTableOrderingComposer
@@ -5571,6 +5626,9 @@ class $$AudioPlayerStateTableTableOrderingComposer
   ColumnOrderings<int> get currentIndex => $composableBuilder(
       column: $table.currentIndex,
       builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get positionMs => $composableBuilder(
+      column: $table.positionMs, builder: (column) => ColumnOrderings(column));
 }
 
 class $$AudioPlayerStateTableTableAnnotationComposer
@@ -5604,6 +5662,9 @@ class $$AudioPlayerStateTableTableAnnotationComposer
 
   GeneratedColumn<int> get currentIndex => $composableBuilder(
       column: $table.currentIndex, builder: (column) => column);
+
+  GeneratedColumn<int> get positionMs => $composableBuilder(
+      column: $table.positionMs, builder: (column) => column);
 }
 
 class $$AudioPlayerStateTableTableTableManager extends RootTableManager<
@@ -5644,6 +5705,7 @@ class $$AudioPlayerStateTableTableTableManager extends RootTableManager<
             Value<List<String>> collections = const Value.absent(),
             Value<List<SpotubeTrackObject>> tracks = const Value.absent(),
             Value<int> currentIndex = const Value.absent(),
+            Value<int> positionMs = const Value.absent(),
           }) =>
               AudioPlayerStateTableCompanion(
             id: id,
@@ -5653,6 +5715,7 @@ class $$AudioPlayerStateTableTableTableManager extends RootTableManager<
             collections: collections,
             tracks: tracks,
             currentIndex: currentIndex,
+            positionMs: positionMs,
           ),
           createCompanionCallback: ({
             Value<int> id = const Value.absent(),
@@ -5662,6 +5725,7 @@ class $$AudioPlayerStateTableTableTableManager extends RootTableManager<
             required List<String> collections,
             Value<List<SpotubeTrackObject>> tracks = const Value.absent(),
             Value<int> currentIndex = const Value.absent(),
+            Value<int> positionMs = const Value.absent(),
           }) =>
               AudioPlayerStateTableCompanion.insert(
             id: id,
@@ -5671,6 +5735,7 @@ class $$AudioPlayerStateTableTableTableManager extends RootTableManager<
             collections: collections,
             tracks: tracks,
             currentIndex: currentIndex,
+            positionMs: positionMs,
           ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

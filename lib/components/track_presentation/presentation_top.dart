@@ -192,8 +192,10 @@ class TrackPresentationTopSection extends HookConsumerWidget {
                                 AutoSizeText(
                                   options.title,
                                   maxLines: 2,
-                                  minFontSize: 16,
-                                  style: context.theme.typography.h3,
+                                  minFontSize: 20,
+                                  // Local (Everforest look): big heavy title
+                                  // like Feishin's album page.
+                                  style: context.theme.typography.h1,
                                 ),
                                 if (options.description != null)
                                   AutoSizeText(

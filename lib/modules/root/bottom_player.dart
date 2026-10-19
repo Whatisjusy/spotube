@@ -51,9 +51,17 @@ class BottomPlayer extends HookConsumerWidget {
       return PlayerOverlay(albumArt: albumArt);
     }
 
+    // Local (Everforest look, copied from Feishin): flat bar, darker than the
+    // page, thin border, no blur.
+    final colorScheme = context.theme.colorScheme;
     return SurfaceCard(
       borderRadius: BorderRadius.zero,
-      surfaceBlur: context.theme.surfaceBlur,
+      fillColor: colorScheme.sidebar,
+      borderColor: colorScheme.sidebarBorder,
+      borderWidth: 1,
+      surfaceOpacity: 1,
+      surfaceBlur: 0,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [

@@ -20,6 +20,7 @@ import 'package:spotube/collections/env.dart';
 import 'package:spotube/collections/http-override.dart';
 import 'package:spotube/collections/intents.dart';
 import 'package:spotube/collections/routes.dart';
+import 'package:spotube/themes/everforest.dart';
 import 'package:spotube/hooks/configurators/use_close_behavior.dart';
 import 'package:spotube/hooks/configurators/use_deep_linking.dart';
 import 'package:spotube/hooks/configurators/use_disable_battery_optimizations.dart';
@@ -27,7 +28,6 @@ import 'package:spotube/hooks/configurators/use_fix_window_stretching.dart';
 import 'package:spotube/hooks/configurators/use_get_storage_perms.dart';
 import 'package:spotube/hooks/configurators/use_has_touch.dart';
 import 'package:spotube/models/database/database.dart';
-import 'package:spotube/modules/settings/color_scheme_picker_dialog.dart';
 import 'package:spotube/provider/audio_player/audio_player_streams.dart';
 import 'package:spotube/provider/database/database.dart';
 import 'package:spotube/provider/glance/glance.dart';
@@ -144,8 +144,6 @@ class Spotube extends HookConsumerWidget {
     final themeMode =
         ref.watch(userPreferencesProvider.select((s) => s.themeMode));
     final locale = ref.watch(userPreferencesProvider.select((s) => s.locale));
-    final accentMaterialColor =
-        ref.watch(userPreferencesProvider.select((s) => s.accentColorScheme));
     final router = useMemoized(() => AppRouter(ref), []);
     final hasTouchSupport = useHasTouch();
 
@@ -216,23 +214,23 @@ class Spotube extends HookConsumerWidget {
         return child;
       },
       scaling: const AdaptiveScaling(1),
+      // Local: Everforest look (copied from Feishin), flat surfaces, Inter.
+      // The Settings accent picker is ignored on purpose.
       theme: ThemeData(
-        radius: .5,
+        radius: everforestRadius,
         iconTheme: const IconThemeProperties(),
-        colorScheme:
-            colorSchemeMap[accentMaterialColor.name]?.call(ThemeMode.light) ??
-                LegacyColorSchemes.lightSlate(),
-        surfaceOpacity: .8,
-        surfaceBlur: 10,
+        colorScheme: everforestColorScheme(ThemeMode.light),
+        typography: everforestTypography,
+        surfaceOpacity: 1,
+        surfaceBlur: 0,
       ),
       darkTheme: ThemeData(
-        radius: .5,
+        radius: everforestRadius,
         iconTheme: const IconThemeProperties(),
-        colorScheme:
-            colorSchemeMap[accentMaterialColor.name]?.call(ThemeMode.dark) ??
-                LegacyColorSchemes.darkSlate(),
-        surfaceOpacity: .8,
-        surfaceBlur: 10,
+        colorScheme: everforestColorScheme(ThemeMode.dark),
+        typography: everforestTypography,
+        surfaceOpacity: 1,
+        surfaceBlur: 0,
       ),
       materialTheme: material.ThemeData(
         brightness: switch (themeMode) {

@@ -183,9 +183,10 @@ class ArtistPageHeader extends HookConsumerWidget {
                           Flexible(
                             child: AutoSizeText(
                               artist.name,
+                              // Local (Everforest look): heavy title.
                               style: constrains.smAndDown
-                                  ? typography.h4
-                                  : typography.h3,
+                                  ? typography.h3
+                                  : typography.h1,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               minFontSize: 14,

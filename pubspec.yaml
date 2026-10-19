@@ -248,6 +248,20 @@ flutter:
     - family: BootstrapIcons
       fonts:
         - asset: packages/shadcn_flutter/icons/BootstrapIcons.otf
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Inter/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter/Inter-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Inter/Inter-ExtraBold.ttf
+          weight: 800
+        - asset: assets/fonts/Inter/Inter-Black.ttf
+          weight: 900
     - family: Cookie
       fonts:
         - asset: assets/fonts/Cookie-Regular.ttf

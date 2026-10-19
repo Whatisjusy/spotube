@@ -51,14 +51,16 @@ class Sidebar extends HookConsumerWidget {
     }
 
     final navigationButtons = [
+      // Local (Everforest look): plain wordmark instead of the Cookie script.
       NavigationLabel(
         child: mediaQuery.lgAndUp
             ? DefaultTextStyle(
                 style: TextStyle(
-                  fontFamily: "Cookie",
-                  fontSize: 30,
-                  letterSpacing: 1.8,
-                  color: colorScheme.foreground,
+                  fontFamily: "Inter",
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.3,
+                  color: colorScheme.sidebarForeground,
                 ),
                 child: const Text("Spotube"),
               )
@@ -97,36 +99,51 @@ class Sidebar extends HookConsumerWidget {
         ),
     ];
 
+    // Local (Everforest look, copied from Feishin): the sidebar sits on a
+    // darker strip with a 1px border on its right, 240px wide.
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Column(
-          children: [
-            Expanded(
-              child: mediaQuery.lgAndUp
-                  ? NavigationSidebar(
-                      index: selectedIndex,
-                      onSelected: (index) {
-                        final tile = tileList[index];
-                        context.navigateTo(tile.route);
-                      },
-                      children: navigationButtons,
-                    )
-                  : NavigationRail(
-                      alignment: NavigationRailAlignment.start,
-                      index: selectedIndex,
-                      onSelected: (index) {
-                        final tile = tileList[index];
-                        context.navigateTo(tile.route);
-                      },
-                      children: navigationButtons,
-                    ),
+        Container(
+          decoration: BoxDecoration(
+            color: colorScheme.sidebar,
+            border: Border(
+              right: BorderSide(color: colorScheme.sidebarBorder, width: 1),
             ),
-            const SidebarFooter(),
-            if (mediaQuery.lgAndUp) const Gap(130) else const Gap(65),
-          ],
+          ),
+          child: Column(
+            children: [
+              Expanded(
+                child: mediaQuery.lgAndUp
+                    ? NavigationSidebar(
+                        backgroundColor: colorScheme.sidebar,
+                        constraints: const BoxConstraints(
+                          minWidth: 240,
+                          maxWidth: 240,
+                        ),
+                        index: selectedIndex,
+                        onSelected: (index) {
+                          final tile = tileList[index];
+                          context.navigateTo(tile.route);
+                        },
+                        children: navigationButtons,
+                      )
+                    : NavigationRail(
+                        backgroundColor: colorScheme.sidebar,
+                        alignment: NavigationRailAlignment.start,
+                        index: selectedIndex,
+                        onSelected: (index) {
+                          final tile = tileList[index];
+                          context.navigateTo(tile.route);
+                        },
+                        children: navigationButtons,
+                      ),
+              ),
+              const SidebarFooter(),
+              if (mediaQuery.lgAndUp) const Gap(130) else const Gap(65),
+            ],
+          ),
         ),
-        const VerticalDivider(),
         Expanded(child: child),
       ],
     );

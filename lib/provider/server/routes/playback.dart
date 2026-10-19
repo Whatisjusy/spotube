@@ -307,6 +307,10 @@ class ServerPlaybackRoutes {
         return Response.notFound("Track not found in the current queue");
       }
 
+      // The engine only fetches a track when it starts playing it, so this is
+      // the ground truth for "what's playing" even if its index event is late.
+      ref.read(audioPlayerProvider.notifier).markTrackAsActive(trackId);
+
       final res = await streamTrack(
         request,
         sourcedTrack,

@@ -429,6 +429,19 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
     );
   }
 
+  /// Called by the local stream server when the audio engine actually starts
+  /// fetching [trackId]. Corrects the active index if the engine's own
+  /// playlist event was late or missed, so the UI never shows the last song.
+  Future<void> markTrackAsActive(String trackId) async {
+    final index = state.tracks.indexWhere((t) => t.id == trackId);
+    if (index == -1 || index == state.currentIndex) return;
+
+    state = state.copyWith(currentIndex: index);
+    await _updatePlayerState(
+      AudioPlayerStateTableCompanion(currentIndex: Value(index)),
+    );
+  }
+
   Future<void> jumpToTrack(SpotubeTrackObject track) async {
     final index =
         state.tracks.toList().indexWhere((element) => element.id == track.id);

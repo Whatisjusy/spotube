@@ -1,3 +1,4 @@
+import 'package:spotube/services/metadata/retry.dart';
 import 'package:hetu_script/hetu_script.dart';
 import 'package:hetu_script/values.dart';
 import 'package:spotube/models/metadata/metadata.dart';
@@ -14,7 +15,7 @@ class MetadataPluginCore {
   Future<PluginUpdateAvailable?> checkUpdate(
     PluginConfiguration pluginConfig,
   ) async {
-    final result = await hetuMetadataPluginUpdater.invoke(
+    final result = await hetuMetadataPluginUpdater.invokeWithRetry(
       "checkUpdate",
       positionalArgs: [pluginConfig.toJson()],
     );
@@ -45,7 +46,7 @@ class MetadataPluginCore {
   /// - [duration_ms] -> The duration of the track in milliseconds (optional).
   /// - [isrc] -> The ISRC code of the track (optional).
   Future<void> scrobble(Map<String, dynamic> details) {
-    return hetuMetadataPluginUpdater.invoke(
+    return hetuMetadataPluginUpdater.invokeWithRetry(
       "scrobble",
       positionalArgs: [details],
     );

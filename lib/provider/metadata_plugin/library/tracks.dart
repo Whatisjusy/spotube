@@ -1,6 +1,7 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/metadata_plugin/core/auth.dart';
+import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
 import 'package:spotube/provider/metadata_plugin/utils/common.dart';
 import 'package:spotube/provider/metadata_plugin/utils/paginated.dart';
 
@@ -23,7 +24,7 @@ class MetadataPluginSavedTracksNotifier
     ref.cacheFor();
 
     await ref.watch(metadataPluginAuthenticatedProvider.future);
-    return await fetch(0, 20);
+    return await fetch(0, 50);
   }
 
   Future<void> addFavorite(List<SpotubeTrackObject> tracks) async {
@@ -43,6 +44,9 @@ class MetadataPluginSavedTracksNotifier
 
     try {
       await (await metadataPlugin).track.save(tracks.map((e) => e.id).toList());
+      for (final track in tracks) {
+        ref.invalidate(metadataPluginIsSavedTrackProvider(track.id));
+      }
     } catch (e) {
       state = AsyncData(oldState!);
       rethrow;
@@ -69,6 +73,9 @@ class MetadataPluginSavedTracksNotifier
       await (await metadataPlugin)
           .track
           .unsave(tracks.map((e) => e.id).toList());
+      for (final track in tracks) {
+        ref.invalidate(metadataPluginIsSavedTrackProvider(track.id));
+      }
     } catch (e) {
       state = AsyncData(oldState!);
       rethrow;
@@ -85,12 +92,19 @@ final metadataPluginSavedTracksProvider = AutoDisposeAsyncNotifierProvider<
 final metadataPluginIsSavedTrackProvider =
     FutureProvider.autoDispose.family<bool, String>(
   (ref, trackId) async {
-    final savedTracks =
-        await ref.watch(metadataPluginSavedTracksProvider.future);
-    final allSavedTracks = savedTracks.hasMore
-        ? await ref.read(metadataPluginSavedTracksProvider.notifier).fetchAll()
-        : savedTracks.items;
+    ref.cacheFor();
+    // Local change: answer from the already-loaded Liked Songs when possible,
+    // otherwise ask the API for just this track. The old code downloaded the
+    // entire Liked Songs list (dozens of requests) to answer "is this liked?",
+    // which tripped Spotify's rate limit on launch.
+    final loaded = ref.watch(metadataPluginSavedTracksProvider).asData?.value;
+    if (loaded != null) {
+      if (loaded.items.any((track) => track.id == trackId)) return true;
+      if (!loaded.hasMore) return false;
+    }
 
-    return allSavedTracks.any((track) => track.id == trackId);
+    final result =
+        await (await ref.watch(metadataPluginProvider.future))!.user.isSavedTracks([trackId]);
+    return result.firstOrNull ?? false;
   },
 );

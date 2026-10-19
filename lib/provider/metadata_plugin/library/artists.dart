@@ -2,6 +2,8 @@ import 'package:riverpod/riverpod.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/metadata_plugin/core/auth.dart';
 import 'package:spotube/provider/metadata_plugin/utils/paginated.dart';
+import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
+import 'package:spotube/provider/metadata_plugin/utils/common.dart';
 
 class MetadataPluginSavedArtistNotifier
     extends PaginatedAsyncNotifier<SpotubeFullArtistObject> {
@@ -40,6 +42,9 @@ class MetadataPluginSavedArtistNotifier
       await (await metadataPlugin)
           .artist
           .save(artists.map((e) => e.id).toList());
+      for (final artist in artists) {
+        ref.invalidate(metadataPluginIsSavedArtistProvider(artist.id));
+      }
     } catch (e) {
       state = AsyncData(oldState!);
       rethrow;
@@ -64,6 +69,9 @@ class MetadataPluginSavedArtistNotifier
 
     try {
       await (await metadataPlugin).artist.unsave(artistIds);
+      for (final id in artistIds) {
+        ref.invalidate(metadataPluginIsSavedArtistProvider(id));
+      }
     } catch (e) {
       state = AsyncData(oldState!);
       rethrow;
@@ -80,15 +88,17 @@ final metadataPluginSavedArtistsProvider = AsyncNotifierProvider<
 final metadataPluginIsSavedArtistProvider =
     FutureProvider.autoDispose.family<bool, String>(
   (ref, artistId) async {
-    final savedArtists =
-        await ref.watch(metadataPluginSavedArtistsProvider.future);
-    final savedArtistsNotifier =
-        ref.read(metadataPluginSavedArtistsProvider.notifier);
-
-    final allSavedArtists = savedArtists.hasMore
-        ? await savedArtistsNotifier.fetchAll()
-        : savedArtists.items;
-
-    return allSavedArtists.any((element) => element.id == artistId);
+    ref.cacheFor();
+    // Local change: answer from what is already loaded, otherwise ask the
+    // API about this one artist instead of downloading the whole library.
+    final loaded = ref.watch(metadataPluginSavedArtistsProvider).asData?.value;
+    if (loaded != null) {
+      if (loaded.items.any((element) => element.id == artistId)) return true;
+      if (!loaded.hasMore) return false;
+    }
+    final plugin = await ref.watch(metadataPluginProvider.future);
+    if (plugin == null) return false;
+    final result = await plugin.user.isSavedArtists([artistId]);
+    return result.firstOrNull ?? false;
   },
 );

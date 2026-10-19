@@ -1,3 +1,4 @@
+import 'package:spotube/services/metadata/retry.dart';
 import 'package:hetu_script/hetu_script.dart';
 import 'package:hetu_script/values.dart';
 import 'package:spotube/models/metadata/metadata.dart';
@@ -12,7 +13,7 @@ class MetadataPluginPlaylistEndpoint {
 
   Future<SpotubeFullPlaylistObject> getPlaylist(String id) async {
     final raw = await hetuMetadataPlaylist
-        .invoke("getPlaylist", positionalArgs: [id]) as Map;
+        .invokeWithRetry("getPlaylist", positionalArgs: [id]) as Map;
 
     return SpotubeFullPlaylistObject.fromJson(
       raw.cast<String, dynamic>(),
@@ -24,7 +25,7 @@ class MetadataPluginPlaylistEndpoint {
     int? offset,
     int? limit,
   }) async {
-    final raw = await hetuMetadataPlaylist.invoke(
+    final raw = await hetuMetadataPlaylist.invokeWithRetry(
       "tracks",
       positionalArgs: [id],
       namedArgs: {
@@ -47,7 +48,7 @@ class MetadataPluginPlaylistEndpoint {
     bool? public,
     bool? collaborative,
   }) async {
-    final raw = await hetuMetadataPlaylist.invoke(
+    final raw = await hetuMetadataPlaylist.invokeWithRetry(
       "create",
       positionalArgs: [userId],
       namedArgs: {
@@ -72,7 +73,7 @@ class MetadataPluginPlaylistEndpoint {
     bool? public,
     bool? collaborative,
   }) async {
-    await hetuMetadataPlaylist.invoke(
+    await hetuMetadataPlaylist.invokeWithRetry(
       "update",
       positionalArgs: [playlistId],
       namedArgs: {
@@ -89,7 +90,7 @@ class MetadataPluginPlaylistEndpoint {
     required List<String> trackIds,
     int? position,
   }) async {
-    await hetuMetadataPlaylist.invoke(
+    await hetuMetadataPlaylist.invokeWithRetry(
       "addTracks",
       positionalArgs: [playlistId],
       namedArgs: {
@@ -103,7 +104,7 @@ class MetadataPluginPlaylistEndpoint {
     String playlistId, {
     required List<String> trackIds,
   }) async {
-    await hetuMetadataPlaylist.invoke(
+    await hetuMetadataPlaylist.invokeWithRetry(
       "removeTracks",
       positionalArgs: [playlistId],
       namedArgs: {
@@ -113,21 +114,21 @@ class MetadataPluginPlaylistEndpoint {
   }
 
   Future<void> save(String playlistId) async {
-    await hetuMetadataPlaylist.invoke(
+    await hetuMetadataPlaylist.invokeWithRetry(
       "save",
       positionalArgs: [playlistId],
     );
   }
 
   Future<void> unsave(String playlistId) async {
-    await hetuMetadataPlaylist.invoke(
+    await hetuMetadataPlaylist.invokeWithRetry(
       "unsave",
       positionalArgs: [playlistId],
     );
   }
 
   Future<void> deletePlaylist(String playlistId) async {
-    return await hetuMetadataPlaylist.invoke(
+    return await hetuMetadataPlaylist.invokeWithRetry(
       "deletePlaylist",
       positionalArgs: [playlistId],
     );

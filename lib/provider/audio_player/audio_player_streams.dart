@@ -25,8 +25,9 @@ class AudioPlayerStreamListeners {
       (value) => notificationService = value,
     );
 
+    listenToActiveTrack();
+
     final subscriptions = [
-      subscribeToPlaylist(),
       subscribeToSkipSponsor(),
       subscribeToScrobbleChanged(),
       subscribeToPosition(),
@@ -47,16 +48,21 @@ class AudioPlayerStreamListeners {
   PlaybackHistoryActions get history =>
       ref.read(playbackHistoryActionsProvider);
 
-  StreamSubscription subscribeToPlaylist() {
-    return audioPlayer.playlistStream.listen((mpvPlaylist) {
-      try {
-        if (audioPlayerState.activeTrack == null) return;
-        notificationService.addTrack(audioPlayerState.activeTrack!);
-        discord.updatePresence(audioPlayerState.activeTrack!);
-      } catch (e, stack) {
-        AppLogger.reportError(e, stack);
-      }
-    });
+  /// Keeps the system Now Playing widget and Discord in sync with whatever
+  /// the app considers the active track, whichever path changed it.
+  void listenToActiveTrack() {
+    ref.listen(
+      audioPlayerProvider.select((s) => s.activeTrack),
+      (previous, track) {
+        if (track == null) return;
+        try {
+          notificationService.addTrack(track);
+          discord.updatePresence(track);
+        } catch (e, stack) {
+          AppLogger.reportError(e, stack);
+        }
+      },
+    );
   }
 
   StreamSubscription subscribeToSkipSponsor() {
@@ -135,10 +141,10 @@ class AudioPlayerStreamListeners {
   StreamSubscription subscribeToPosition() {
     String lastTrack = ""; // used to prevent multiple calls to the same track
     return audioPlayer.positionStream.listen((event) async {
-      final percentProgress =
-          (event.inSeconds / max(audioPlayer.duration.inSeconds, 1)) * 100;
       try {
-        if (percentProgress < 80 ||
+        // Resolve the next track's audio source early (a few seconds into the
+        // current one) so skipping ahead doesn't stall.
+        if (event < const Duration(seconds: 5) ||
             audioPlayerState.currentIndex == -1 ||
             audioPlayerState.currentIndex ==
                 audioPlayerState.tracks.length - 1) {

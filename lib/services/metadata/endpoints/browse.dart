@@ -1,3 +1,4 @@
+import 'package:spotube/services/metadata/retry.dart';
 import 'package:hetu_script/hetu_script.dart';
 import 'package:hetu_script/values.dart';
 import 'package:spotube/models/metadata/metadata.dart';
@@ -15,7 +16,7 @@ class MetadataPluginBrowseEndpoint {
     int? offset,
     int? limit,
   }) async {
-    final raw = await hetuMetadataBrowse.invoke(
+    final raw = await hetuMetadataBrowse.invokeWithRetry(
       "sections",
       namedArgs: {
         "offset": offset,
@@ -54,7 +55,7 @@ class MetadataPluginBrowseEndpoint {
     int? offset,
     int? limit,
   }) async {
-    final raw = await hetuMetadataBrowse.invoke(
+    final raw = await hetuMetadataBrowse.invokeWithRetry(
       "sectionItems",
       positionalArgs: [id],
       namedArgs: {

@@ -1,3 +1,4 @@
+import 'package:spotube/services/metadata/retry.dart';
 import 'package:hetu_script/hetu_script.dart';
 import 'package:hetu_script/values.dart';
 import 'package:spotube/models/metadata/metadata.dart';
@@ -12,7 +13,7 @@ class MetadataPluginTrackEndpoint {
 
   Future<SpotubeFullTrackObject> getTrack(String id) async {
     final raw =
-        await hetuMetadataTrack.invoke("getTrack", positionalArgs: [id]) as Map;
+        await hetuMetadataTrack.invokeWithRetry("getTrack", positionalArgs: [id]) as Map;
 
     return SpotubeFullTrackObject.fromJson(
       raw.cast<String, dynamic>(),
@@ -20,15 +21,15 @@ class MetadataPluginTrackEndpoint {
   }
 
   Future<void> save(List<String> ids) async {
-    await hetuMetadataTrack.invoke("save", positionalArgs: [ids]);
+    await hetuMetadataTrack.invokeWithRetry("save", positionalArgs: [ids]);
   }
 
   Future<void> unsave(List<String> ids) async {
-    await hetuMetadataTrack.invoke("unsave", positionalArgs: [ids]);
+    await hetuMetadataTrack.invokeWithRetry("unsave", positionalArgs: [ids]);
   }
 
   Future<List<SpotubeFullTrackObject>> radio(String id) async {
-    final result = await hetuMetadataTrack.invoke(
+    final result = await hetuMetadataTrack.invokeWithRetry(
       "radio",
       positionalArgs: [id],
     );

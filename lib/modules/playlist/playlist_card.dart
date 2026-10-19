@@ -103,14 +103,12 @@ class PlaylistCard extends HookConsumerWidget {
             ),
           );
         } else {
+          // Local change: start with the first page only. Downloading the
+          // whole playlist here meant dozens of requests before playback
+          // and tripped Spotify's rate limit on big playlists.
           await playlistNotifier.load(fetchedInitialTracks, autoPlay: true);
           playlistNotifier.addCollection(playlist.id);
           historyNotifier.addPlaylists([playlist]);
-
-          final allTracks = await fetchAllTracks();
-
-          await playlistNotifier
-              .addTracks(allTracks.sublist(fetchedInitialTracks.length));
         }
       } finally {
         if (context.mounted) {

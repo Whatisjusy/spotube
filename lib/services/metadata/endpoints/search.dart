@@ -1,3 +1,4 @@
+import 'package:spotube/services/metadata/retry.dart';
 import 'package:hetu_script/hetu_script.dart';
 import 'package:hetu_script/values.dart';
 import 'package:spotube/models/metadata/metadata.dart';
@@ -24,7 +25,7 @@ class MetadataPluginSearchEndpoint {
       );
     }
 
-    final raw = await hetuMetadataSearch.invoke(
+    final raw = await hetuMetadataSearch.invokeWithRetry(
       "all",
       positionalArgs: [query],
     ) as Map;
@@ -47,7 +48,7 @@ class MetadataPluginSearchEndpoint {
       );
     }
 
-    final raw = await hetuMetadataSearch.invoke(
+    final raw = await hetuMetadataSearch.invokeWithRetry(
       "albums",
       positionalArgs: [query],
       namedArgs: {
@@ -77,7 +78,7 @@ class MetadataPluginSearchEndpoint {
       );
     }
 
-    final raw = await hetuMetadataSearch.invoke(
+    final raw = await hetuMetadataSearch.invokeWithRetry(
       "artists",
       positionalArgs: [query],
       namedArgs: {
@@ -110,7 +111,7 @@ class MetadataPluginSearchEndpoint {
       );
     }
 
-    final raw = await hetuMetadataSearch.invoke(
+    final raw = await hetuMetadataSearch.invokeWithRetry(
       "playlists",
       positionalArgs: [query],
       namedArgs: {
@@ -143,7 +144,7 @@ class MetadataPluginSearchEndpoint {
       );
     }
 
-    final raw = await hetuMetadataSearch.invoke(
+    final raw = await hetuMetadataSearch.invokeWithRetry(
       "tracks",
       positionalArgs: [query],
       namedArgs: {

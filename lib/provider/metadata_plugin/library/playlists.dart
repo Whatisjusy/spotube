@@ -59,6 +59,7 @@ class MetadataPluginSavedPlaylistsNotifier
 
     try {
       await (await metadataPlugin).playlist.save(playlist.id);
+      ref.invalidate(metadataPluginIsSavedPlaylistProvider(playlist.id));
     } catch (e) {
       state = AsyncData(oldState!);
       rethrow;
@@ -77,6 +78,7 @@ class MetadataPluginSavedPlaylistsNotifier
 
     try {
       await (await metadataPlugin).playlist.unsave(playlist.id);
+      ref.invalidate(metadataPluginIsSavedPlaylistProvider(playlist.id));
     } catch (e) {
       state = AsyncData(oldState!);
       rethrow;
@@ -134,16 +136,14 @@ final metadataPluginIsSavedPlaylistProvider =
       throw MetadataPluginException.noDefaultMetadataPlugin();
     }
 
-    final savedPlaylists =
-        await ref.watch(metadataPluginSavedPlaylistsProvider.future);
-
-    final savedPlaylistsNotifier =
-        ref.read(metadataPluginSavedPlaylistsProvider.notifier);
-
-    final allSavedPlaylists = savedPlaylists.hasMore
-        ? await savedPlaylistsNotifier.fetchAll()
-        : savedPlaylists.items;
-
-    return allSavedPlaylists.any((element) => element.id == id);
+    // Local change: answer from what is already loaded, otherwise ask the
+    // API about this one playlist instead of downloading the whole library.
+    final loaded =
+        ref.watch(metadataPluginSavedPlaylistsProvider).asData?.value;
+    if (loaded != null) {
+      if (loaded.items.any((element) => element.id == id)) return true;
+      if (!loaded.hasMore) return false;
+    }
+    return await plugin.user.isSavedPlaylist(id);
   },
 );

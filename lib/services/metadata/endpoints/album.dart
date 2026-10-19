@@ -1,3 +1,4 @@
+import 'package:spotube/services/metadata/retry.dart';
 import 'package:hetu_script/hetu_script.dart';
 import 'package:hetu_script/values.dart';
 import 'package:spotube/models/metadata/metadata.dart';
@@ -12,7 +13,7 @@ class MetadataPluginAlbumEndpoint {
 
   Future<SpotubeFullAlbumObject> getAlbum(String id) async {
     final raw =
-        await hetuMetadataAlbum.invoke("getAlbum", positionalArgs: [id]) as Map;
+        await hetuMetadataAlbum.invokeWithRetry("getAlbum", positionalArgs: [id]) as Map;
 
     return SpotubeFullAlbumObject.fromJson(
       raw.cast<String, dynamic>(),
@@ -24,7 +25,7 @@ class MetadataPluginAlbumEndpoint {
     int? offset,
     int? limit,
   }) async {
-    final raw = await hetuMetadataAlbum.invoke(
+    final raw = await hetuMetadataAlbum.invokeWithRetry(
       "tracks",
       positionalArgs: [id],
       namedArgs: {
@@ -44,7 +45,7 @@ class MetadataPluginAlbumEndpoint {
     int? offset,
     int? limit,
   }) async {
-    final raw = await hetuMetadataAlbum.invoke(
+    final raw = await hetuMetadataAlbum.invokeWithRetry(
       "releases",
       namedArgs: {
         "offset": offset,
@@ -60,14 +61,14 @@ class MetadataPluginAlbumEndpoint {
   }
 
   Future<void> save(List<String> ids) async {
-    await hetuMetadataAlbum.invoke(
+    await hetuMetadataAlbum.invokeWithRetry(
       "save",
       positionalArgs: [ids],
     );
   }
 
   Future<void> unsave(List<String> ids) async {
-    await hetuMetadataAlbum.invoke(
+    await hetuMetadataAlbum.invokeWithRetry(
       "unsave",
       positionalArgs: [ids],
     );

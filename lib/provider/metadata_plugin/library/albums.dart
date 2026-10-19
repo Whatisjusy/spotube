@@ -2,6 +2,8 @@ import 'package:riverpod/riverpod.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/metadata_plugin/core/auth.dart';
 import 'package:spotube/provider/metadata_plugin/utils/paginated.dart';
+import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
+import 'package:spotube/provider/metadata_plugin/utils/common.dart';
 
 class MetadataPluginSavedAlbumNotifier
     extends PaginatedAsyncNotifier<SpotubeSimpleAlbumObject> {
@@ -36,6 +38,9 @@ class MetadataPluginSavedAlbumNotifier
     );
     try {
       await (await metadataPlugin).album.save(albums.map((e) => e.id).toList());
+      for (final album in albums) {
+        ref.invalidate(metadataPluginIsSavedAlbumProvider(album.id));
+      }
     } catch (e) {
       state = AsyncData(oldState!);
       rethrow;
@@ -59,6 +64,9 @@ class MetadataPluginSavedAlbumNotifier
     );
     try {
       await (await metadataPlugin).album.unsave(albumIds);
+      for (final id in albumIds) {
+        ref.invalidate(metadataPluginIsSavedAlbumProvider(id));
+      }
     } catch (e) {
       state = AsyncData(oldState!);
       rethrow;
@@ -75,14 +83,17 @@ final metadataPluginSavedAlbumsProvider = AsyncNotifierProvider<
 final metadataPluginIsSavedAlbumProvider =
     FutureProvider.autoDispose.family<bool, String>(
   (ref, albumId) async {
-    final savedAlbums =
-        await ref.watch(metadataPluginSavedAlbumsProvider.future);
-    final savedAlbumsNotifier =
-        ref.read(metadataPluginSavedAlbumsProvider.notifier);
-    final allSavedAlbums = savedAlbums.hasMore
-        ? await savedAlbumsNotifier.fetchAll()
-        : savedAlbums.items;
-
-    return allSavedAlbums.any((element) => element.id == albumId);
+    ref.cacheFor();
+    // Local change: answer from what is already loaded, otherwise ask the
+    // API about this one album instead of downloading the whole library.
+    final loaded = ref.watch(metadataPluginSavedAlbumsProvider).asData?.value;
+    if (loaded != null) {
+      if (loaded.items.any((element) => element.id == albumId)) return true;
+      if (!loaded.hasMore) return false;
+    }
+    final plugin = await ref.watch(metadataPluginProvider.future);
+    if (plugin == null) return false;
+    final result = await plugin.user.isSavedAlbums([albumId]);
+    return result.firstOrNull ?? false;
   },
 );

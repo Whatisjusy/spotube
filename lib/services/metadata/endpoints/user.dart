@@ -1,3 +1,4 @@
+import 'package:spotube/services/metadata/retry.dart';
 import 'package:hetu_script/hetu_script.dart';
 import 'package:hetu_script/values.dart';
 import 'package:spotube/models/metadata/metadata.dart';
@@ -11,7 +12,7 @@ class MetadataPluginUserEndpoint {
           as HTInstance;
 
   Future<SpotubeUserObject> me() async {
-    final raw = await hetuMetadataUser.invoke("me") as Map;
+    final raw = await hetuMetadataUser.invokeWithRetry("me") as Map;
 
     return SpotubeUserObject.fromJson(
       raw.cast<String, dynamic>(),
@@ -22,7 +23,7 @@ class MetadataPluginUserEndpoint {
     int? offset,
     int? limit,
   }) async {
-    final raw = await hetuMetadataUser.invoke(
+    final raw = await hetuMetadataUser.invokeWithRetry(
       "savedTracks",
       namedArgs: {
         "offset": offset,
@@ -42,7 +43,7 @@ class MetadataPluginUserEndpoint {
     int? offset,
     int? limit,
   }) async {
-    final raw = await hetuMetadataUser.invoke(
+    final raw = await hetuMetadataUser.invokeWithRetry(
       "savedPlaylists",
       namedArgs: {
         "offset": offset,
@@ -63,7 +64,7 @@ class MetadataPluginUserEndpoint {
     int? offset,
     int? limit,
   }) async {
-    final raw = await hetuMetadataUser.invoke(
+    final raw = await hetuMetadataUser.invokeWithRetry(
       "savedAlbums",
       namedArgs: {
         "offset": offset,
@@ -83,7 +84,7 @@ class MetadataPluginUserEndpoint {
     int? offset,
     int? limit,
   }) async {
-    final raw = await hetuMetadataUser.invoke(
+    final raw = await hetuMetadataUser.invokeWithRetry(
       "savedArtists",
       namedArgs: {
         "offset": offset,
@@ -99,14 +100,14 @@ class MetadataPluginUserEndpoint {
   }
 
   Future<bool> isSavedPlaylist(String playlistId) async {
-    return await hetuMetadataUser.invoke(
+    return await hetuMetadataUser.invokeWithRetry(
       "isSavedPlaylist",
       positionalArgs: [playlistId],
     ) as bool;
   }
 
   Future<List<bool>> isSavedTracks(List<String> ids) async {
-    final values = await hetuMetadataUser.invoke(
+    final values = await hetuMetadataUser.invokeWithRetry(
       "isSavedTracks",
       positionalArgs: [ids],
     );
@@ -114,7 +115,7 @@ class MetadataPluginUserEndpoint {
   }
 
   Future<List<bool>> isSavedAlbums(List<String> ids) async {
-    final values = await hetuMetadataUser.invoke(
+    final values = await hetuMetadataUser.invokeWithRetry(
       "isSavedAlbums",
       positionalArgs: [ids],
     ) as List;
@@ -122,7 +123,7 @@ class MetadataPluginUserEndpoint {
   }
 
   Future<List<bool>> isSavedArtists(List<String> ids) async {
-    final values = await hetuMetadataUser.invoke(
+    final values = await hetuMetadataUser.invokeWithRetry(
       "isSavedArtists",
       positionalArgs: [ids],
     ) as List;

@@ -33,8 +33,9 @@ make migrate                      # drift DB migrations after schema changes
 - `skill-observations/` is excluded via `.git/info/exclude`.
 
 ## Gotchas
-- **Xcode 27 refuses minimum macOS < 12.0.** Upstream pins 10.15 and several pods pin 10.14/10.15.
-  Local fix (committed on `main`): `macos/Podfile` platform 12.0 + post_install forces
-  `MACOSX_DEPLOYMENT_TARGET=12.0` on every pod; `macos/Runner.xcodeproj` raised to 12.0. Keep this when rebasing.
+- **Xcode 27 refuses minimum macOS < 12.0 and iOS < 15.0.** Upstream pins 10.15 / 13.0 and several pods lower.
+  Local fix (committed on `main`): `macos/Podfile` and `ios/Podfile` platform raised + post_install forces
+  `MACOSX_DEPLOYMENT_TARGET=12.0` / `IPHONEOS_DEPLOYMENT_TARGET=15.0` on every pod; both `Runner.xcodeproj` raised.
+  Keep this when rebasing. If a build fails with "range of supported deployment target versions", this is why.
 - Generated files are not committed upstream; after any pull run build_runner.
 - Last.fm keys in `.env` are empty, so scrobbling is off in local builds.

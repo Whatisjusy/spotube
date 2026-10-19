@@ -39,3 +39,42 @@ make migrate                      # drift DB migrations after schema changes
   Keep this when rebasing. If a build fails with "range of supported deployment target versions", this is why.
 - Generated files are not committed upstream; after any pull run build_runner.
 - Last.fm keys in `.env` are empty, so scrobbling is off in local builds.
+- **The debug build shares saved data with the installed Spotube.** Same bundle id
+  (`oss.krtirtho.spotube`), so `~/Library/Application Support/oss.krtirtho.spotube/` (plugins,
+  login, `db.sqlite` with the saved queue) is shared. A debug run restores whatever queue the
+  installed app last had (seen 2026-10-19: a 3,650-track Liked Songs queue), so check
+  `sqlite3 db.sqlite "select current_index, length(tracks), collections from audio_player_state_table"`
+  before judging queue behaviour. `Debug.xcconfig` only renames the app to "Spotube Dev"; it does
+  not split the data.
+- **The app's own log is `~/Library/Logs/.spotube_logs`** (hidden file, multi-MB, from
+  `lib/services/logger/logger.dart`). Tally it by HTTP status and calling function before
+  theorising about "error / retry" boxes: on 17-19 Oct it showed 578x 401 (expired Spotify login,
+  one burst), 173x 429 (rate limit, mostly Liked Songs), ~110 dropped connections.
+- **Spotify data comes from a plugin, not this repo.** "Sonic Liberation / Spotify" 0.2.2, Hetu
+  bytecode in the plugins folder above, source at
+  https://github.com/sonic-liberation/spotube-plugin-spotify (tag `0.2.2`, `src/segments/*.ht`;
+  `main` is now the Kotlin 6.0 version). It refreshes its token only on a timer and never checks
+  expiry per request, so after the Mac sleeps every call 401s until the timer fires. The app-side
+  answer is `lib/services/metadata/retry.dart` (`invokeWithRetry`: 401 -> ask plugin to
+  `refreshCredentials` and retry once; 429/5xx -> backoff; connection errors -> retry). Every
+  endpoint in `lib/services/metadata/endpoints/` goes through it.
+- **`fvm flutter analyze` rewrites `pubspec.lock`** (downgrades one package under the pinned SDK).
+  `git checkout pubspec.lock` before committing unless deps were meant to change.
+- **Testing a running debug build:** `fvm flutter run` launched detached has no stdin, so no hot
+  reload; kill the `Debug/Spotube.app` process and relaunch. The app's local control server
+  listens on a random port (`lsof -nP -iTCP -sTCP:LISTEN -a -p <pid>`); `GET /playback/toggle-playback`,
+  `/playback/next`, `/playback/previous` drive playback for smoke tests, and
+  `GET /stream/<trackId>` in the log proves which track the engine actually fetched.
+
+## Local behaviour changes (decisions, 2026-10-19)
+- Tapping a track in any list = "play from here": queue is that track + the next 50 loaded ones
+  (`kQueueWindow` in `use_track_tile_play_callback.dart`). It always rebuilds the queue; it never
+  jumps inside an existing queue. The header Play/Shuffle buttons still load the whole collection.
+- Next track's audio source is resolved 5 s into the current track (was 80%).
+- `markTrackAsActive` in `audio_player.dart` is called from the stream server on every
+  `/stream/<id>` GET, so the active index follows what the engine fetches, not only mpv's
+  playlist event. Now Playing / Discord follow `activeTrack` via `ref.listen`.
+- Debug builds are named **"Spotube Dev"** (set in `macos/Runner/Configs/AppInfo.xcconfig` with
+  `PRODUCT_NAME[config=Debug]`). Project-level `Debug.xcconfig` is overridden by that target-level
+  file, so put name overrides there. Same bundle id as the installed app, so login/settings are shared.
+- Local change: the Getting Started welcome screen never shows on launch (guard removed in `routes.dart`).

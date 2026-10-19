@@ -6,6 +6,9 @@
 
 // The application's name. By default this is also the title of the Flutter window.
 PRODUCT_NAME = Spotube
+// Local dev: the debug build shows up as "Spotube Dev" so it cannot be
+// confused with the installed app. Same bundle id, so settings are shared.
+PRODUCT_NAME[config=Debug] = Spotube Dev
 
 // The application's bundle identifier
 PRODUCT_BUNDLE_IDENTIFIER = oss.krtirtho.spotube

@@ -3,8 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:spotube/collections/routes.gr.dart';
-import 'package:spotube/provider/metadata_plugin/core/auth.dart';
-import 'package:spotube/services/kv_store/kv_store.dart';
 
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -25,20 +23,8 @@ class AppRouter extends RootStackRouter {
               path: "home",
               page: HomeRoute.page,
               initial: true,
-              guards: [
-                AutoRouteGuardCallback(
-                  (resolver, router) async {
-                    final authenticated = await ref
-                        .read(metadataPluginAuthenticatedProvider.future);
-
-                    if (!authenticated && !KVStoreService.doneGettingStarted) {
-                      resolver.redirect(const GettingStartedRoute());
-                    } else {
-                      resolver.next(true);
-                    }
-                  },
-                ),
-              ],
+              // Local change: never redirect to the Getting Started screen.
+              // The app opens straight to Home.
             ),
             AutoRoute(
               path: "home/sections/:sectionId",

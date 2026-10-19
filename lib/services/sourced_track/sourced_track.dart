@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:collection/collection.dart';
@@ -10,11 +11,14 @@ import 'package:spotube/models/playback/track_sources.dart';
 import 'package:spotube/provider/database/database.dart';
 import 'package:spotube/provider/metadata_plugin/audio_source/quality_presets.dart';
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
+import 'package:spotube/provider/youtube_engine/youtube_engine.dart';
 import 'package:spotube/services/dio/dio.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/metadata/errors/exceptions.dart';
 
 import 'package:spotube/services/sourced_track/exceptions.dart';
+import 'package:spotube/services/youtube_engine/youtube_engine.dart';
+import 'package:youtube_explode_dart/youtube_explode_dart.dart' show Video;
 
 final officialMusicRegex = RegExp(
   r"official\s(video|audio|music\svideo|lyric\svideo|visualizer)",
@@ -58,20 +62,30 @@ class SourcedTrack extends BasicSourcedTrack {
         .then((s) => s.firstOrNull);
 
     if (cachedSource == null) {
-      final siblings = await fetchSiblings(ref: ref, query: query);
+      final (siblings, fromFallback) =
+          await _fetchSiblingsDetailed(ref: ref, query: query);
       if (siblings.isEmpty) {
         throw TrackNotFoundError(query);
       }
 
-      await database.into(database.sourceMatchTable).insert(
-            SourceMatchTableCompanion.insert(
-              trackId: query.id,
-              sourceInfo: Value(jsonEncode(siblings.first)),
-              sourceType: audioSourceConfig.slug,
-            ),
-          );
+      final manifest = await streamsWithFallback(
+        pluginStreams: () => audioSource.audioSource.streams(siblings.first),
+        match: siblings.first,
+        query: query,
+        engine: ref.read(youtubeEngineProvider),
+      );
 
-      final manifest = await audioSource.audioSource.streams(siblings.first);
+      // A pick made because the plugin timed out is not saved, so the plugin
+      // gets another chance (and lossless can win) on the next play.
+      if (!fromFallback) {
+        await database.into(database.sourceMatchTable).insert(
+              SourceMatchTableCompanion.insert(
+                trackId: query.id,
+                sourceInfo: Value(jsonEncode(siblings.first)),
+                sourceType: audioSourceConfig.slug,
+              ),
+            );
+      }
 
       return SourcedTrack(
         ref: ref,
@@ -85,7 +99,12 @@ class SourcedTrack extends BasicSourcedTrack {
     final item = SpotubeAudioSourceMatchObject.fromJson(
       jsonDecode(cachedSource.sourceInfo),
     );
-    final manifest = await audioSource.audioSource.streams(item);
+    final manifest = await streamsWithFallback(
+      pluginStreams: () => audioSource.audioSource.streams(item),
+      match: item,
+      query: query,
+      engine: ref.read(youtubeEngineProvider),
+    );
 
     final sourcedTrack = SourcedTrack(
       ref: ref,
@@ -250,7 +269,127 @@ class SourcedTrack extends BasicSourcedTrack {
     return [...others, ...scored.map((e) => e.match)];
   }
 
+  /// How long a plugin lookup (matches or streams) may take before the app
+  /// finds the song on YouTube by itself so playback still starts.
+  static const audioSourceTimeout = Duration(seconds: 4);
+
+  /// Video id of a YouTube match, whichever plugin made it: `youtube:<id>`,
+  /// a watch link with `v=`, or a bare 11-character id. Null otherwise.
+  static String? youtubeVideoId(SpotubeAudioSourceMatchObject m) {
+    if (m.id.startsWith("youtube:")) return m.id.substring("youtube:".length);
+    final v = Uri.tryParse(m.externalUri)?.queryParameters["v"];
+    if (v != null && v.isNotEmpty) return v;
+    if (RegExp(r"^[A-Za-z0-9_-]{11}$").hasMatch(m.id)) return m.id;
+    return null;
+  }
+
+  /// Search text for a direct YouTube lookup of [track].
+  static String youtubeQueryFor(SpotubeFullTrackObject track) {
+    return "${track.artists.map((a) => a.name).join(" ")} ${track.name}".trim();
+  }
+
+  /// Turns engine search results into the match shape plugins send.
+  static List<SpotubeAudioSourceMatchObject> matchesFromVideos(
+    List<Video> videos,
+  ) {
+    return videos
+        .map((v) => SpotubeAudioSourceMatchObject(
+              id: v.id.value,
+              title: v.title,
+              artists: [v.author],
+              duration: v.duration ?? Duration.zero,
+              thumbnail: v.thumbnails.mediumResUrl,
+              externalUri: "https://youtube.com/watch?v=${v.id.value}",
+            ))
+        .toList();
+  }
+
+  /// Audio streams for a YouTube video straight from the engine, in the
+  /// shape plugins send (lossy mp4 / webm).
+  static Future<List<SpotubeAudioSourceStreamObject>> streamsFromEngine(
+    YouTubeEngine engine,
+    String videoId,
+  ) async {
+    final manifest = await engine.getStreamManifest(videoId);
+    return manifest.audioOnly
+        .map((s) => SpotubeAudioSourceStreamObject(
+              url: s.url.toString(),
+              container: s.container.name,
+              type: SpotubeMediaCompressionType.lossy,
+              codec: s.audioCodec,
+              bitrate: s.bitrate.bitsPerSecond.toDouble(),
+            ))
+        .toList();
+  }
+
+  /// Finds [track] on YouTube without the plugin: songs-first search, then
+  /// the clean-audio ranking.
+  static Future<List<SpotubeAudioSourceMatchObject>> youtubeFallbackMatches(
+    YouTubeEngine engine,
+    SpotubeFullTrackObject track,
+  ) async {
+    final videos = await searchYouTubeCleanFirst(engine, youtubeQueryFor(track));
+    return rankResults(matchesFromVideos(videos), track);
+  }
+
+  /// Calls the plugin's `streams` with a time limit. If it is too slow, or
+  /// fails for a YouTube match, the streams come from the YouTube engine
+  /// instead: for a YouTube match, that same video; for anything else (a
+  /// Monochrome match while Monochrome is down), the best YouTube result for
+  /// the song. The saved match is left alone so lossless can win next time.
+  static Future<List<SpotubeAudioSourceStreamObject>> streamsWithFallback({
+    required Future<List<SpotubeAudioSourceStreamObject>> Function()
+        pluginStreams,
+    required SpotubeAudioSourceMatchObject match,
+    required SpotubeFullTrackObject query,
+    required YouTubeEngine engine,
+    Duration timeout = audioSourceTimeout,
+  }) async {
+    final watch = Stopwatch()..start();
+    try {
+      final streams = await pluginStreams().timeout(timeout);
+      AppLogger.log.d(
+        "streams for \"${query.name}\" took ${watch.elapsedMilliseconds} ms",
+      );
+      return streams;
+    } on TimeoutException {
+      AppLogger.log.w(
+        "Audio source plugin took over ${timeout.inSeconds}s to fetch streams "
+        "for \"${query.name}\" (${match.id}); using YouTube directly",
+      );
+    } catch (e, stack) {
+      if (youtubeVideoId(match) == null) rethrow;
+      AppLogger.log.w(
+        "Audio source plugin failed to fetch streams for \"${query.name}\" "
+        "(${match.id}); using the YouTube engine directly: $e",
+      );
+      AppLogger.reportError(e, stack);
+    }
+
+    final videoId = youtubeVideoId(match);
+    if (videoId != null) return streamsFromEngine(engine, videoId);
+
+    final fallback = await youtubeFallbackMatches(engine, query);
+    if (fallback.isEmpty) throw TrackNotFoundError(query);
+    AppLogger.log.i(
+      "YouTube stand-in for \"${query.name}\": ${fallback.first.title} "
+      "(${fallback.first.artists.join(", ")})",
+    );
+    return streamsFromEngine(engine, youtubeVideoId(fallback.first)!);
+  }
+
   static Future<List<SpotubeAudioSourceMatchObject>> fetchSiblings({
+    required SpotubeFullTrackObject query,
+    required Ref ref,
+  }) async {
+    final (siblings, _) = await _fetchSiblingsDetailed(ref: ref, query: query);
+    return siblings;
+  }
+
+  /// Like [fetchSiblings]; the flag says the plugin timed out and the list
+  /// came from a direct YouTube search instead.
+  static Future<(List<SpotubeAudioSourceMatchObject>, bool)>
+      _fetchSiblingsDetailed({
     required SpotubeFullTrackObject query,
     required Ref ref,
   }) async {
@@ -260,7 +399,27 @@ class SourcedTrack extends BasicSourcedTrack {
       throw MetadataPluginException.noDefaultAudioSourcePlugin();
     }
 
-    final searchResults = await audioSource.audioSource.matches(query);
+    List<SpotubeAudioSourceMatchObject> searchResults;
+    var fromFallback = false;
+    final watch = Stopwatch()..start();
+    try {
+      searchResults =
+          await audioSource.audioSource.matches(query).timeout(audioSourceTimeout);
+      AppLogger.log.d(
+        "matches for \"${query.name}\" took ${watch.elapsedMilliseconds} ms",
+      );
+    } on TimeoutException {
+      AppLogger.log.w(
+        "Audio source plugin took over ${audioSourceTimeout.inSeconds}s to "
+        "match \"${query.name}\"; searching YouTube directly",
+      );
+      searchResults = matchesFromVideos(await searchYouTubeCleanFirst(
+        ref.read(youtubeEngineProvider),
+        youtubeQueryFor(query),
+      ));
+      fromFallback = true;
+    }
+
     final ranked = rankResults(searchResults, query).toSet().toList();
 
     final top = ranked.where(isYouTubeMatch).take(3).toList();
@@ -270,7 +429,7 @@ class SourcedTrack extends BasicSourcedTrack {
       );
     }
 
-    return ranked;
+    return (ranked, fromFallback);
   }
 
   Future<SourcedTrack> copyWithSibling() async {
@@ -313,7 +472,12 @@ class SourcedTrack extends BasicSourcedTrack {
     final newSiblings = siblings.where((s) => s.id != sibling.id).toList()
       ..insert(0, info);
 
-    final manifest = await audioSource.audioSource.streams(newSourceInfo);
+    final manifest = await streamsWithFallback(
+      pluginStreams: () => audioSource.audioSource.streams(newSourceInfo),
+      match: newSourceInfo,
+      query: query,
+      engine: ref.read(youtubeEngineProvider),
+    );
 
     final database = ref.read(databaseProvider);
 
@@ -380,7 +544,12 @@ class SourcedTrack extends BasicSourcedTrack {
     AppLogger.log.d(stringBuffer.toString());
 
     if (validStreams.isEmpty) {
-      validStreams = await audioSource.audioSource.streams(info);
+      validStreams = await streamsWithFallback(
+        pluginStreams: () => audioSource.audioSource.streams(info),
+        match: info,
+        query: query,
+        engine: ref.read(youtubeEngineProvider),
+      );
     }
 
     final sourcedTrack = SourcedTrack(

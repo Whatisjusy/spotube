@@ -148,14 +148,26 @@ song played today matched Monochrome, so no YouTube pick was saved yet.
 
 File: `lib/services/sourced_track/sourced_track.dart`, `fetchFromTrack`.
 
-- [ ] Wrap the plugin `matches` call in a 4 s timeout. On timeout, fall
+- [x] Wrap the plugin `matches` call in a 4 s timeout. On timeout, fall
       back to the YouTube-only path (Phase 3 ranking on a direct engine
       search) so the song still starts.
-- [ ] Wrap `streams` in a 4 s timeout the same way.
+- [x] Wrap `streams` in a 4 s timeout the same way.
 - [ ] Verify: block monochrome's host in /etc/hosts, play a song, it must
       start within about 5 s from YouTube. Remove the block afterwards.
 
 Estimate: 30 min.
+
+Code done 2026-10-19 (`audioSourceTimeout`, `streamsWithFallback`,
+`youtubeFallbackMatches` in `sourced_track.dart`). On a `matches` timeout the
+app searches YouTube itself (songs first, Phase 3 ranking) and does NOT save
+the pick, so the plugin gets another chance next play. On a `streams`
+timeout it streams the same video for a YouTube match, or the best YouTube
+result for a Monochrome/hifi match, leaving the saved match alone. A plugin
+error on a YouTube match also falls through to the engine; an error on a
+non-YouTube match still surfaces. Elapsed ms for every plugin call is logged
+at debug level to tune the 4 s. Verified with 5 unit tests (16 total).
+The /etc/hosts live test is NOT done: it needs sudo, and relaunching the
+debug app would kill the instance another session is running.
 
 ### Phase 6. Prefer webm (Opus) over mp4 on YouTube
 

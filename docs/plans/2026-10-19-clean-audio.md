@@ -203,13 +203,22 @@ and broke the build.
 
 ### Phase 8. One-tap "wrong version"
 
-- [ ] Button in the same pill row: swap to the next-ranked sibling and save
+- [x] Button in the same pill row: swap to the next-ranked sibling and save
       it (existing `swapWithSibling` already saves). Show a 2 s toast with
       the new title.
 - [ ] Verify: tap it on a song, the audio changes and the choice survives an
       app restart.
 
 Estimate: 30 min.
+
+Code done 2026-10-19: a tiny skip-forward icon beside the badge in
+`player_source_badge.dart`. It fetches siblings if the track has none yet,
+calls `swapWithNextSibling` (saves the choice in `source_match_table`),
+then `swapActiveSource` to restart playback on the new stream, and shows a
+2 s toast "Now playing: <title>". Shows a spinner while swapping; says
+"No other version found" when there is nothing to swap to. Live check
+(audio changes, choice survives restart) NOT done: build blocked by the
+other session's migration.
 
 ### Phase 9. Clear the old picks
 

@@ -17,6 +17,8 @@ import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/metadata/errors/exceptions.dart';
 
 import 'package:spotube/services/sourced_track/exceptions.dart';
+import 'package:spotube/services/sourced_track/source_label.dart'
+    as source_label;
 import 'package:spotube/services/youtube_engine/youtube_engine.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' show Video;
 
@@ -135,11 +137,7 @@ class SourcedTrack extends BasicSourcedTrack {
     "instrumental",
   ];
 
-  static const musicVideoWords = [
-    "official video",
-    "music video",
-    "official music video",
-  ];
+  static const musicVideoWords = source_label.musicVideoWords;
 
   static const cleanAudioWords = [
     "official audio",

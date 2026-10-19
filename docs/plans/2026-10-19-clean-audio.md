@@ -183,12 +183,23 @@ the plugin offered only mp4 (hifi-api AAC), so webm was not exercised.
 Files: `lib/modules/player/player_track_details.dart` (or
 `player_controls.dart`), reading the active `SourcedTrack`.
 
-- [ ] Small pill next to the title: "FLAC 24/96", "FLAC", "Opus 160k",
+- [x] Small pill next to the title: "FLAC 24/96", "FLAC", "Opus 160k",
       "AAC 128k". Red tint if the matched title looks like a music video.
-- [ ] Tap the pill to open the existing `sibling_tracks_sheet.dart`.
+- [x] Tap the pill to open the existing `sibling_tracks_sheet.dart`.
 - [ ] Verify: play a FLAC song and a YouTube-only song, pill text changes.
 
 Estimate: 45 min.
+
+Code done 2026-10-19: `PlayerSourceBadge` (`lib/modules/player/player_source_badge.dart`)
+sits next to the title in the bottom bar (both layouts) and the full-screen
+player. Label logic is in `lib/services/sourced_track/source_label.dart`
+("FLAC 24/96", "FLAC 16/44.1", "Opus 160k", "AAC 128k"); red badge when the
+matched title has "official video" / "music video". Tap opens
+`SiblingTracksSheet` (popover on wide screens, route on phones). Tooltip
+shows the matched title, channel and source id. Label logic unit-tested.
+Live check (pill text changes between a FLAC and a YouTube song) NOT done:
+another session's database migration (`database.steps.dart`) was mid-edit
+and broke the build.
 
 ### Phase 8. One-tap "wrong version"
 

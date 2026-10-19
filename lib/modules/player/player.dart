@@ -5,6 +5,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:sliding_up_panel/sliding_up_panel.dart';
 
+import 'package:spotube/modules/player/player_source_badge.dart';
 import 'package:spotube/collections/assets.gen.dart';
 import 'package:spotube/collections/routes.gr.dart';
 import 'package:spotube/collections/spotube_icons.dart';
@@ -171,12 +172,21 @@ class PlayerView extends HookConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        AutoSizeText(
-                          currentActiveTrack?.name ?? context.l10n.not_playing,
-                          style: const TextStyle(fontSize: 22),
-                          maxFontSize: 22,
-                          maxLines: 1,
-                          textAlign: TextAlign.start,
+                        Row(
+                          children: [
+                            Flexible(
+                              child: AutoSizeText(
+                                currentActiveTrack?.name ??
+                                    context.l10n.not_playing,
+                                style: const TextStyle(fontSize: 22),
+                                maxFontSize: 22,
+                                maxLines: 1,
+                                textAlign: TextAlign.start,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const PlayerSourceBadge(),
+                          ],
                         ),
                         if (isLocalTrack)
                           Text(

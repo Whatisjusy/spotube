@@ -10,6 +10,7 @@ import 'package:spotube/components/links/artist_link.dart';
 import 'package:spotube/components/links/link_text.dart';
 import 'package:spotube/extensions/constrains.dart';
 import 'package:spotube/models/metadata/metadata.dart';
+import 'package:spotube/modules/player/player_source_badge.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
 
 class PlayerTrackDetails extends HookConsumerWidget {
@@ -47,12 +48,20 @@ class PlayerTrackDetails extends HookConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 4),
-                Text(
-                  playback.activeTrack?.name ?? "",
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.typography.normal.copyWith(
-                    color: color,
-                  ),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        playback.activeTrack?.name ?? "",
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.typography.normal.copyWith(
+                          color: color,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const PlayerSourceBadge(),
+                  ],
                 ),
                 Text(
                   playback.activeTrack?.artists.asString() ?? "",
@@ -67,12 +76,22 @@ class PlayerTrackDetails extends HookConsumerWidget {
             flex: 1,
             child: Column(
               children: [
-                LinkText(
-                  playback.activeTrack?.name ?? "",
-                  TrackRoute(trackId: playback.activeTrack?.id ?? ""),
-                  push: true,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontWeight: FontWeight.bold, color: color),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: LinkText(
+                        playback.activeTrack?.name ?? "",
+                        TrackRoute(trackId: playback.activeTrack?.id ?? ""),
+                        push: true,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, color: color),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const PlayerSourceBadge(),
+                  ],
                 ),
                 ArtistLink(
                   artists: playback.activeTrack?.artists ?? [],

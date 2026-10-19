@@ -7,6 +7,7 @@ import 'package:spotube/collections/side_bar_tiles.dart';
 import 'package:spotube/models/database/database.dart';
 import 'package:spotube/extensions/constrains.dart';
 import 'package:spotube/extensions/context.dart';
+import 'package:spotube/modules/root/bottom_player.dart';
 import 'package:spotube/modules/root/sidebar/sidebar_footer.dart';
 
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
@@ -140,7 +141,9 @@ class Sidebar extends HookConsumerWidget {
                       ),
               ),
               const SidebarFooter(),
-              if (mediaQuery.lgAndUp) const Gap(130) else const Gap(65),
+              // Room above the floating player bar; none needed when docked.
+              if (!isPlayerDocked(context, layoutMode))
+                if (mediaQuery.lgAndUp) const Gap(130) else const Gap(65),
             ],
           ),
         ),

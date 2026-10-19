@@ -84,7 +84,9 @@ make migrate                      # drift DB migrations after schema changes
   `lib/themes/everforest.dart` (colours as a shadcn `ColorScheme`, Inter typography with Feishin's sizes,
   radius 0.35) and is wired in `main.dart`; glass surfaces are off (`surfaceOpacity: 1, surfaceBlur: 0`).
   The Settings accent-colour picker is intentionally ignored. Inter TTFs are in `assets/fonts/Inter/` (OFL).
-  Still to do for the full Feishin look: darker sidebar strip, 90px flat player bar, heavy headings on pages.
+  Sidebar is a darker 240px strip, the player bar is flat and **docked** on desktop layouts
+  (`isPlayerDocked` in `bottom_player.dart`; `floatingFooter` and the page bottom padding in
+  `root_app.dart` follow it), album/artist titles use h1. Phone/compact layouts keep the floating overlay.
 - Clean-audio plan: `docs/plans/2026-10-19-clean-audio.md`. Phases 1 + 2 done 2026-10-19:
   `getStreamOfQuality` falls back flac -> webm -> mp4 -> anything (never throws on an empty
   list); first run with a plugin defaults to its lossless preset; audio source plugin is now

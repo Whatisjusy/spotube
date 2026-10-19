@@ -23,6 +23,15 @@ import 'package:spotube/provider/volume_provider.dart';
 import 'package:spotube/utils/platform.dart';
 import 'package:window_manager/window_manager.dart';
 
+/// Local (Everforest look): on desktop-sized layouts the player bar is docked
+/// to the bottom edge like Feishin's, instead of floating over the content.
+/// Compact/phone layouts keep the floating overlay.
+bool isPlayerDocked(BuildContext context, LayoutMode layoutMode) {
+  final mediaQuery = MediaQuery.of(context);
+  return !(layoutMode == LayoutMode.compact ||
+      (mediaQuery.mdAndDown && layoutMode == LayoutMode.adaptive));
+}
+
 class BottomPlayer extends HookConsumerWidget {
   const BottomPlayer({super.key});
 

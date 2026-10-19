@@ -11,6 +11,7 @@ import 'package:spotube/modules/root/spotube_navigation_bar.dart';
 import 'package:spotube/hooks/configurators/use_endless_playback.dart';
 import 'package:spotube/modules/root/use_global_subscriptions.dart';
 import 'package:spotube/provider/glance/glance.dart';
+import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 
 @RoutePage()
 class RootAppPage extends HookConsumerWidget {
@@ -39,6 +40,12 @@ class RootAppPage extends HookConsumerWidget {
       return null;
     }, [backgroundColor, brightness]);
 
+    // Local (Everforest look): docked player bar on desktop layouts, so the
+    // pages no longer need to pad for a floating bar.
+    final layoutMode =
+        ref.watch(userPreferencesProvider.select((s) => s.layoutMode));
+    final docked = isPlayerDocked(context, layoutMode);
+
     final scaffold = MediaQuery.removeViewInsets(
       context: context,
       removeBottom: true,
@@ -49,12 +56,13 @@ class RootAppPage extends HookConsumerWidget {
             BottomPlayer(),
             SpotubeNavigationBar(),
           ],
-          floatingFooter: true,
+          floatingFooter: !docked,
           child: Sidebar(
             child: MediaQuery(
               data: MediaQuery.of(context).copyWith(
-                padding: MediaQuery.paddingOf(context)
-                    .copyWith(bottom: 100 * context.theme.scaling),
+                padding: MediaQuery.paddingOf(context).copyWith(
+                  bottom: docked ? 0 : 100 * context.theme.scaling,
+                ),
               ),
               child: const AutoRouter(),
             ),

@@ -205,6 +205,13 @@ no playable FLAC right now (the instances answer, but the file check fails
 or the Hi-Res DASH variant is skipped), so it falls to its YouTube backup.
 Monochrome matches play FLAC. Source-side; nothing to fix in the app.
 
+Confirmation run after both changes (9 songs + prefetch): matches
+2.4-4.2 s, streams 4.4-9.7 s of plugin time (down from 7.5-13.8 s once the
+yt-dlp Songs search was gone), queue waits up to 6.9 s (now harmless),
+0 timeouts, 0 breaker opens. 4 of 9 songs played FLAC, including "Only
+Friends", which had timed out before; the 5 Opus songs were hifi-api or
+YouTube matches, not timeouts.
+
 ### Phase 6. Prefer webm (Opus) over mp4 on YouTube
 
 - [x] In the Phase 1 fallback order, webm before mp4 (already listed).

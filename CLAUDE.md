@@ -88,8 +88,10 @@ make migrate                      # drift DB migrations after schema changes
   (ffmpeg scan: 18 of 287 corrupt, moved to `cached_tracks_bad_2026-10-20/`); `streamTrack` now writes
   only when no `.part` exists, no prefetch is running and the range starts at 0, and sweeps stale
   `.part`/`.prefetch` once per launch. Check a cached file with `ffmpeg -v error -i <f> -f null -`.
-- Known slow path: skipping past the prepared window is a cold lookup per track, and while
-  `api.monochrome.tf` is unreachable each one burns the plugin's 4 s timeout first (~10 s per skip).
+- Known slow path: skipping past the prepared window is a cold lookup per track. While the plugin's
+  server (`api.monochrome.tf`) is unreachable, `SourcedTrack.audioSourceBreaker`
+  (`audio_source_breaker.dart`) skips the plugin for 60 s after 3 timeouts in a row, then probes once;
+  log lines `timed out N times in a row; skipping it for 60 s` / `skipped for "<song>" (breaker open)`.
 - `markTrackAsActive` in `audio_player.dart` is called from the stream server on every
   `/stream/<id>` GET, so the active index follows what the engine fetches, not only mpv's
   playlist event. Now Playing / Discord follow `activeTrack` via `ref.listen`.

@@ -16,6 +16,7 @@ import 'package:spotube/services/dio/dio.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/metadata/errors/exceptions.dart';
 
+import 'package:spotube/services/sourced_track/audio_source_breaker.dart';
 import 'package:spotube/services/sourced_track/exceptions.dart';
 import 'package:spotube/services/sourced_track/source_label.dart'
     as source_label;
@@ -271,6 +272,17 @@ class SourcedTrack extends BasicSourcedTrack {
   /// finds the song on YouTube by itself so playback still starts.
   static const audioSourceTimeout = Duration(seconds: 4);
 
+  /// Skips the plugin for a minute after three timeouts in a row, so a dead
+  /// plugin server costs one timeout per minute instead of one per song.
+  static final audioSourceBreaker = AudioSourceBreaker();
+
+  static void _logBreakerOpened(AudioSourceBreaker breaker) {
+    AppLogger.log.w(
+      "Audio source plugin timed out ${breaker.consecutiveTimeouts} times in "
+      "a row; skipping it for ${breaker.cooldown.inSeconds} s",
+    );
+  }
+
   /// Video id of a YouTube match, whichever plugin made it: `youtube:<id>`,
   /// a watch link with `v=`, or a bare 11-character id. Null otherwise.
   static String? youtubeVideoId(SpotubeAudioSourceMatchObject m) {
@@ -326,7 +338,8 @@ class SourcedTrack extends BasicSourcedTrack {
     YouTubeEngine engine,
     SpotubeFullTrackObject track,
   ) async {
-    final videos = await searchYouTubeCleanFirst(engine, youtubeQueryFor(track));
+    final videos =
+        await searchYouTubeCleanFirst(engine, youtubeQueryFor(track));
     return rankResults(matchesFromVideos(videos), track);
   }
 
@@ -342,26 +355,37 @@ class SourcedTrack extends BasicSourcedTrack {
     required SpotubeFullTrackObject query,
     required YouTubeEngine engine,
     Duration timeout = audioSourceTimeout,
+    AudioSourceBreaker? breaker,
   }) async {
+    breaker ??= audioSourceBreaker;
     final watch = Stopwatch()..start();
-    try {
-      final streams = await pluginStreams().timeout(timeout);
+    if (breaker.isOpen) {
       AppLogger.log.d(
-        "streams for \"${query.name}\" took ${watch.elapsedMilliseconds} ms",
+        "Audio source plugin skipped for \"${query.name}\" (breaker open); "
+        "using YouTube directly",
       );
-      return streams;
-    } on TimeoutException {
-      AppLogger.log.w(
-        "Audio source plugin took over ${timeout.inSeconds}s to fetch streams "
-        "for \"${query.name}\" (${match.id}); using YouTube directly",
-      );
-    } catch (e, stack) {
-      if (youtubeVideoId(match) == null) rethrow;
-      AppLogger.log.w(
-        "Audio source plugin failed to fetch streams for \"${query.name}\" "
-        "(${match.id}); using the YouTube engine directly: $e",
-      );
-      AppLogger.reportError(e, stack);
+    } else {
+      try {
+        final streams = await pluginStreams().timeout(timeout);
+        breaker.recordSuccess();
+        AppLogger.log.d(
+          "streams for \"${query.name}\" took ${watch.elapsedMilliseconds} ms",
+        );
+        return streams;
+      } on TimeoutException {
+        AppLogger.log.w(
+          "Audio source plugin took over ${timeout.inSeconds}s to fetch "
+          "streams for \"${query.name}\" (${match.id}); using YouTube directly",
+        );
+        if (breaker.recordTimeout()) _logBreakerOpened(breaker);
+      } catch (e, stack) {
+        if (youtubeVideoId(match) == null) rethrow;
+        AppLogger.log.w(
+          "Audio source plugin failed to fetch streams for \"${query.name}\" "
+          "(${match.id}); using the YouTube engine directly: $e",
+        );
+        AppLogger.reportError(e, stack);
+      }
     }
 
     final videoId = youtubeVideoId(match);
@@ -397,20 +421,34 @@ class SourcedTrack extends BasicSourcedTrack {
       throw MetadataPluginException.noDefaultAudioSourcePlugin();
     }
 
-    List<SpotubeAudioSourceMatchObject> searchResults;
+    List<SpotubeAudioSourceMatchObject>? searchResults;
     var fromFallback = false;
     final watch = Stopwatch()..start();
-    try {
-      searchResults =
-          await audioSource.audioSource.matches(query).timeout(audioSourceTimeout);
+    if (audioSourceBreaker.isOpen) {
       AppLogger.log.d(
-        "matches for \"${query.name}\" took ${watch.elapsedMilliseconds} ms",
+        "Audio source plugin skipped for \"${query.name}\" (breaker open); "
+        "searching YouTube directly",
       );
-    } on TimeoutException {
-      AppLogger.log.w(
-        "Audio source plugin took over ${audioSourceTimeout.inSeconds}s to "
-        "match \"${query.name}\"; searching YouTube directly",
-      );
+    } else {
+      try {
+        searchResults = await audioSource.audioSource
+            .matches(query)
+            .timeout(audioSourceTimeout);
+        audioSourceBreaker.recordSuccess();
+        AppLogger.log.d(
+          "matches for \"${query.name}\" took ${watch.elapsedMilliseconds} ms",
+        );
+      } on TimeoutException {
+        AppLogger.log.w(
+          "Audio source plugin took over ${audioSourceTimeout.inSeconds}s to "
+          "match \"${query.name}\"; searching YouTube directly",
+        );
+        if (audioSourceBreaker.recordTimeout()) {
+          _logBreakerOpened(audioSourceBreaker);
+        }
+      }
+    }
+    if (searchResults == null) {
       searchResults = matchesFromVideos(await searchYouTubeCleanFirst(
         ref.read(youtubeEngineProvider),
         youtubeQueryFor(query),
@@ -627,8 +665,8 @@ class SourcedTrack extends BasicSourcedTrack {
       if (_loggedFallbacks.add(container)) {
         AppLogger.log.i(
           "Format fallback for \"${query.name}\": wanted ${preset.name}, "
-          "got ${pick.container} ${pick.codec ?? ""} "
-          "${pick.bitrate != null ? "${(pick.bitrate! / 1000).round()}k" : ""}"
+                  "got ${pick.container} ${pick.codec ?? ""} "
+                  "${pick.bitrate != null ? "${(pick.bitrate! / 1000).round()}k" : ""}"
               .trim(),
         );
       }
@@ -656,22 +694,21 @@ class SourcedTrack extends BasicSourcedTrack {
       final lossless = candidates.where((s) => s.sampleRate != null).toList();
       if (lossless.isNotEmpty) {
         return lossless.reduce((prev, curr) {
-          final prevDiff =
-              ((prev.sampleRate ?? 0) - quality.sampleRate).abs() +
-                  ((prev.bitDepth ?? 0) - quality.bitDepth).abs();
-          final currDiff =
-              ((curr.sampleRate ?? 0) - quality.sampleRate).abs() +
-                  ((curr.bitDepth ?? 0) - quality.bitDepth).abs();
+          final prevDiff = ((prev.sampleRate ?? 0) - quality.sampleRate).abs() +
+              ((prev.bitDepth ?? 0) - quality.bitDepth).abs();
+          final currDiff = ((curr.sampleRate ?? 0) - quality.sampleRate).abs() +
+              ((curr.bitDepth ?? 0) - quality.bitDepth).abs();
           return currDiff < prevDiff ? curr : prev;
         });
       }
       // Lossless wanted but only lossy streams here: take the best bitrate.
-      return candidates.reduce(
-          (prev, curr) => (curr.bitrate ?? 0) > (prev.bitrate ?? 0) ? curr : prev);
+      return candidates.reduce((prev, curr) =>
+          (curr.bitrate ?? 0) > (prev.bitrate ?? 0) ? curr : prev);
     }
 
     final lossy = quality as SpotubeAudioLossyContainerQuality;
-    final exact = candidates.firstWhereOrNull((s) => s.bitrate == lossy.bitrate);
+    final exact =
+        candidates.firstWhereOrNull((s) => s.bitrate == lossy.bitrate);
     if (exact != null) return exact;
 
     final withBitrate = candidates.where((s) => s.bitrate != null).toList();

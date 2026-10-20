@@ -40,27 +40,36 @@ class YtDlpEngine implements YouTubeEngine {
     return StreamManifest(audioOnlyStreams);
   }
 
+  /// Stands in when a listing carries no channel id (YouTube Music search
+  /// results in --flat-playlist mode have no channel, id or length).
+  static const _unknownChannel = "UCxxxxxxxxxxxxxxxxxxxxxx";
+
   Video _parseInfo(Map<String, dynamic> info) {
     final publishDate = info["upload_date"] != null
         ? DateTime.fromMillisecondsSinceEpoch(
             int.parse(info["upload_date"]) * 1000,
           )
         : DateTime.now();
+    final channelId = info["channel_id"] as String?;
     return Video(
       VideoId(info["id"]),
-      info["title"],
-      info["channel"],
-      ChannelId(info["channel_id"]),
+      info["title"] ?? "",
+      info["channel"] ?? info["uploader"] ?? info["artist"] ?? "",
+      ChannelId(
+        channelId != null && ChannelId.validateChannelId(channelId)
+            ? channelId
+            : _unknownChannel,
+      ),
       publishDate,
       info["upload_date"] as String? ?? DateTime.now().toString(),
       publishDate,
       info["description"] ?? "",
-      Duration(seconds: (info["duration"] as num).toInt()),
+      Duration(seconds: (info["duration"] as num?)?.toInt() ?? 0),
       ThumbnailSet(info["id"]),
       info["tags"]?.cast<String>() ?? <String>[],
       Engagement(
-        info["view_count"],
-        info["like_count"],
+        (info["view_count"] as num?)?.toInt() ?? 0,
+        (info["like_count"] as num?)?.toInt(),
         null,
       ),
       info["is_live"] ?? false,

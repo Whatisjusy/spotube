@@ -41,6 +41,9 @@ Future<void> glanceBackgroundCallback(Uri? data) async {
 Future<bool?> _saveWidgetData<T>(String key, T? value) async {
   try {
     if (!kIsMobile) return null;
+    // home_widget 0.7.0 on iOS passes null as NSNull to UserDefaults, which
+    // throws a native exception and kills the app (fresh install, empty queue).
+    if (kIsIOS && value == null) return null;
 
     return await HomeWidget.saveWidgetData<T>(key, value);
   } catch (e, stack) {

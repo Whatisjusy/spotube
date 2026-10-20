@@ -14,12 +14,13 @@ import 'package:spotube/models/parser/range_headers.dart';
 import 'package:spotube/provider/audio_player/audio_player.dart';
 import 'package:spotube/provider/audio_player/state.dart';
 
-import 'package:spotube/provider/server/active_track_sources.dart';
 import 'package:spotube/provider/server/sourced_track_provider.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/logger/logger.dart';
+import 'package:spotube/services/network_cost.dart';
 import 'package:spotube/services/sourced_track/sourced_track.dart';
+import 'package:spotube/utils/flac_check.dart';
 import 'package:spotube/utils/service_utils.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
@@ -49,6 +50,10 @@ class ServerPlaybackRoutes {
   /// Cache file paths with a background download in flight, and the token
   /// that stops each one.
   final _prefetching = <String, CancelToken>{};
+
+  /// The lookups of the last few tracks started, so their seeks are served
+  /// from the same stream.
+  final _playing = <String, SourcedTrack>{};
 
   /// The song the engine most recently asked for from byte 0, noted when the
   /// request arrives (before its lookup), so a slower earlier request cannot
@@ -85,6 +90,8 @@ class ServerPlaybackRoutes {
   /// off, the file is already cached, or a download is already running.
   Future<void> prefetchToCache(SourcedTrack track) async {
     if (!userPreferences.cacheMusic) return;
+    // Whole-song downloads ahead cost too much on mobile data.
+    if (NetworkCost.onMobileData) return;
     final url = track.url;
     if (url == null) return;
 
@@ -152,6 +159,9 @@ class ServerPlaybackRoutes {
     int fileLength,
   ) async {
     if (track.activeFileExtension == "weba") return;
+    // Writing tags into a FLAC without padding has left the metadata pointing
+    // a few KB off the first audio frame (12 of 45 cached FLACs on the Mac).
+    if (cacheFile.path.endsWith(".flac")) return;
 
     final imageBytes = await ServiceUtils.downloadImage(
       track.query.album.images.asUrlString(
@@ -171,29 +181,54 @@ class ServerPlaybackRoutes {
     });
   }
 
-  Future<String> _getTrackCacheFilePath(SourcedTrack track) async {
+  Future<String> _getTrackCacheFilePath(
+    SourcedTrack track, {
+    String? extension,
+  }) async {
     return join(
       await UserPreferencesNotifier.getMusicCacheDir(),
       ServiceUtils.sanitizeFilename(
-        '${track.query.name} - ${track.query.artists.map((d) => d.name).join(",")} (${track.info.id}).${track.activeFileExtension}',
+        '${track.query.name} - ${track.query.artists.map((d) => d.name).join(",")} (${track.info.id}).${extension ?? track.activeFileExtension}',
       ),
     );
   }
 
   /// The complete cached file for [track], or null when there is none or
-  /// caching is off. An empty file is deleted so the track streams live and
-  /// gets cached again. (It used to fail every request for that track: no
-  /// bytes to serve, and a range request crashed the handler.)
+  /// caching is off. A FLAC or full-quality copy (saved on Wi-Fi) wins even
+  /// on mobile data: it is better and costs nothing to play.
   Future<File?> _cachedFileFor(SourcedTrack track) async {
     if (!userPreferences.cacheMusic) return null;
-    final file = File(await _getTrackCacheFilePath(track));
-    if (!await file.exists()) return null;
-    if (await file.length() > 0) return file;
+    final extensions = {
+      "flac",
+      if (track.fullQualityStream case final stream?) stream.fileExtension,
+      track.activeFileExtension,
+    };
+    for (final extension in extensions) {
+      final file = File(
+        await _getTrackCacheFilePath(track, extension: extension),
+      );
+      if (await _usableCacheFile(file, track)) return file;
+    }
+    return null;
+  }
+
+  /// Exists, is not empty and is not a damaged FLAC. A bad one is deleted so
+  /// the track streams live and gets cached again. (An empty file used to
+  /// fail every request for that track: no bytes to serve, and a range
+  /// request crashed the handler.)
+  Future<bool> _usableCacheFile(File file, SourcedTrack track) async {
+    if (!await file.exists()) return false;
+    final empty = await file.length() == 0;
+    if (!empty &&
+        (!file.path.endsWith(".flac") || await flacLooksPlayable(file))) {
+      return true;
+    }
     AppLogger.log.w(
-      "Deleted empty cached file for \"${track.query.name}\"; streaming it",
+      "Deleted ${empty ? "empty" : "damaged"} cached file for "
+      "\"${track.query.name}\"; streaming it",
     );
     await file.delete().catchError((_) => file);
-    return null;
+    return false;
   }
 
   /// Serves a cached file the way a real HTTP server would: byte ranges are
@@ -207,8 +242,13 @@ class ServerPlaybackRoutes {
     SourcedTrack track,
   ) async {
     final length = await file.length();
+    final fileContainer = switch (extension(file.path)) {
+      ".m4a" => "mp4",
+      ".weba" => "webm",
+      final ext => ext.replaceFirst(".", ""),
+    };
     final baseHeaders = {
-      "content-type": "audio/${track.activeContainer}",
+      "content-type": "audio/$fileContainer",
       "accept-ranges": "bytes",
     };
     final isHead = request.method == "HEAD";
@@ -256,21 +296,20 @@ class ServerPlaybackRoutes {
     final track =
         playlist.tracks.firstWhere((element) => element.id == trackId);
 
-    final activeSourcedTrack =
-        await ref.read(activeTrackSourcesProvider.future);
-
     final media = audioPlayer.playlist.medias
         .firstWhere((e) => e.uri == request.requestedUri.toString());
     final spotubeMedia =
         media is SpotubeMedia ? media : SpotubeMedia.media(media);
-    final sourcedTrack = activeSourcedTrack?.track.id == track.id
-        ? activeSourcedTrack?.source
-        : await ref.read(
-            sourcedTrackProvider(spotubeMedia.track as SpotubeFullTrackObject)
-                .future,
-          );
+    final query = spotubeMedia.track as SpotubeFullTrackObject;
 
-    return sourcedTrack;
+    // Read the song's own lookup (activeTrackSourcesProvider holds the same
+    // one for the playing song, but fails for every song while the playing
+    // song's lookup is failed), and look it up again if it had failed.
+    return retryFailedRead(
+      read: () => ref.read(sourcedTrackProvider(query).future),
+      invalidate: () => ref.invalidate(sourcedTrackProvider(query)),
+      name: track.name,
+    );
   }
 
   Future<dio_lib.Response> streamTrackInformation(
@@ -469,14 +508,25 @@ class ServerPlaybackRoutes {
   /// @get('/stream/<trackId>')
   Future<Response> getStreamTrackId(Request request, String trackId) async {
     try {
+      // A request from byte 0 starts the track afresh: pick the stream for
+      // the network we are on now. A seek keeps the exact lookup (and
+      // stream) that started playing, even if a Wi-Fi/mobile change has
+      // since rebuilt it.
       final range = request.headers["range"];
-      if (range == null || range.startsWith("bytes=0-")) {
-        _latestStartRequest = trackId;
-      }
-      final sourcedTrack = await _getSourcedTrack(request, trackId);
+      final freshStart = range == null || range.startsWith("bytes=0-");
+      if (freshStart) _latestStartRequest = trackId;
+      final sourcedTrack = (freshStart ? null : _playing[trackId]) ??
+          await _getSourcedTrack(request, trackId);
 
       if (sourcedTrack == null) {
         return Response.notFound("Track not found in the current queue");
+      }
+
+      if (freshStart) {
+        sourcedTrack.pickStreamForNewPlay();
+        _playing.remove(trackId);
+        _playing[trackId] = sourcedTrack;
+        if (_playing.length > 6) _playing.remove(_playing.keys.first);
       }
 
       // The engine only fetches a track when it starts playing it, so this is

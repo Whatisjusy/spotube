@@ -98,26 +98,9 @@ class SearchPageTracksTab extends HookConsumerWidget {
                   }
                 }
               } else {
-                final isTrackPlaying = playlist.activeTrack?.id == track.id;
-                if (!isTrackPlaying && context.mounted) {
-                  final shouldPlay = (playlist.tracks.length) > 20
-                      ? await showPromptDialog(
-                          context: context,
-                          title: context.l10n.playing_track(
-                            track.name,
-                          ),
-                          message: context.l10n.queue_clear_alert(
-                            playlist.tracks.length,
-                          ),
-                        )
-                      : true;
-
-                  if (shouldPlay) {
-                    await playlistNotifier.load(
-                      [track],
-                      autoPlay: true,
-                    );
-                  }
+                // Play it now and keep the queue (it used to be replaced).
+                if (playlist.activeTrack?.id != track.id) {
+                  await playlistNotifier.playNow(track);
                 }
               }
             },

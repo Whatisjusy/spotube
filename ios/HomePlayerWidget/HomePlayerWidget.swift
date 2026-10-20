@@ -8,7 +8,7 @@
 import WidgetKit
 import SwiftUI
 
-private let widgetGroupId = "group.spotube_home_player_widget"
+private let widgetGroupId = "group.nz.kahustudio.spotube"
 
 struct Provider: TimelineProvider {
     func placeholder(in context: Context) -> SimpleEntry {

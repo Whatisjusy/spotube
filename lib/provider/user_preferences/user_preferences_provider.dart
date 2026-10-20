@@ -37,6 +37,20 @@ class UserPreferencesNotifier extends Notifier<PreferencesTableData> {
             ..where((tbl) => tbl.id.equals(0)))
           .getSingle();
 
+      // iOS moves the app's folder on every reinstall, so a download path
+      // saved by an earlier install points somewhere the app may not write.
+      // Only Documents is writable for this (not the container's Downloads).
+      if (kIsIOS) {
+        final documents = (await paths.getApplicationDocumentsDirectory()).path;
+        if (!state.downloadLocation.startsWith(documents)) {
+          await setData(
+            PreferencesTableCompanion(
+              downloadLocation: Value(await _getDefaultDownloadDirectory()),
+            ),
+          );
+        }
+      }
+
       final subscription = (db.select(db.preferencesTable)
             ..where((tbl) => tbl.id.equals(0)))
           .watchSingle()
@@ -71,6 +85,13 @@ class UserPreferencesNotifier extends Notifier<PreferencesTableData> {
 
     if (kIsMacOS) {
       return join((await paths.getLibraryDirectory()).path, "Caches");
+    }
+
+    if (kIsIOS) {
+      return join(
+        (await paths.getApplicationDocumentsDirectory()).path,
+        "Spotube",
+      );
     }
 
     return paths.getDownloadsDirectory().then((dir) {

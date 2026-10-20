@@ -1,4 +1,5 @@
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
+import 'package:spotube/services/metadata/radio.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +13,10 @@ void useEndlessPlayback(WidgetRef ref) {
   final endlessPlayback =
       ref.watch(userPreferencesProvider.select((s) => s.endlessPlayback));
   final metadataPlugin = ref.watch(metadataPluginProvider.future);
+  // The last song radio was asked for. The effect below re-runs on every
+  // queue or index change, so the same last song used to be asked about
+  // again and again (up to 6 times a minute on the phone).
+  final radioAskedFor = useRef<String?>(null);
 
   useEffect(
     () {
@@ -23,10 +28,14 @@ void useEndlessPlayback(WidgetRef ref) {
           if (index != playlist.tracks.length - 1) return;
 
           final track = playlist.tracks.last;
+          if (radioAskedFor.value == track.id) return;
+          radioAskedFor.value = track.id;
 
-          final tracks = await (await metadataPlugin)?.track.radio(track.id);
+          final plugin = await metadataPlugin;
+          if (plugin == null) return;
+          final tracks = await pluginSongsLike(plugin, track);
 
-          if (tracks == null || tracks.isEmpty) return;
+          if (tracks.isEmpty) return;
 
           await playback.addTracks(
             tracks.toList()

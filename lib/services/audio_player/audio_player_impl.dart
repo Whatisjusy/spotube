@@ -88,15 +88,21 @@ class SpotubeAudioPlayer extends AudioPlayerInterface
 
   int get currentIndex => _mkPlayer.state.playlist.index;
 
+  // Logged so the log tells a skip someone asked for from one the player
+  // made itself (song ended, or failed to open): see custom_player.dart.
   Future<void> skipToNext() async {
+    AppLogger.log.i("Skip: next asked for (from position $currentIndex)");
     await _mkPlayer.next();
   }
 
   Future<void> skipToPrevious() async {
+    AppLogger.log.i("Skip: previous asked for (from position $currentIndex)");
     await _mkPlayer.previous();
   }
 
   Future<void> jumpTo(int index) async {
+    AppLogger.log.i("Skip: jump to position $index asked for "
+        "(from position $currentIndex)");
     await _mkPlayer.jump(index);
   }
 

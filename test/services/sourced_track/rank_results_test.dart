@@ -149,4 +149,81 @@ void main() {
       300,
     );
   });
+
+  group("artist check", () {
+    // Phone log 2026-10-20 16:20:16, real YouTube results. The Spotify list
+    // had no lengths (durationMs 0), so only the artist could tell them
+    // apart, and another artist's Topic upload won 9 to 5.
+    test("another artist's same-named song loses to the real one", () {
+      final t = track(name: "I FEEL STRANGE", artists: ["pluko"], seconds: 0);
+      final results = [
+        yt("I FEEL STRANGE", "pluko", 0),
+        yt("pluko  -  I FEEL STRANGE", "Cresta La Cultura", 0),
+        yt("I Feel Strange (feat. Cam Sully)", "Ccapöne - Topic", 0),
+      ];
+
+      final ranked = SourcedTrack.rankResults(results, t);
+
+      expect(ranked.first.title, "I FEEL STRANGE");
+      expect(ranked.last.title, "I Feel Strange (feat. Cam Sully)");
+    });
+
+    test("the song's own Topic upload still wins, for any of its artists", () {
+      final t = track(
+        name: "CLENCH MY FIST (Jon Casey VIP)",
+        artists: ["Jon Casey", "Angrybaby"],
+        seconds: 0,
+      );
+      final results = [
+        yt("Jon Casey - CLENCH MY FIST (Jon Casey VIP)", "Jon Casey", 0),
+        yt("CLENCH MY FIST (Jon Casey VIP)", "Angrybaby - Topic", 0),
+      ];
+
+      final ranked = SourcedTrack.rankResults(results, t);
+
+      expect(ranked.first.artists.first, "Angrybaby - Topic");
+    });
+  });
+
+  group("featured artists in the song name", () {
+    // Real YouTube results, 2026-10-20. Spotify's name carries "(feat. ...)",
+    // the uploads do not, so they were all dropped and a mashup was played.
+    final gangland = [
+      yt("Chef Boy, Mozzy, YG & E-40 - Gang Gang Gangland (AUDIO)", "DatPiff", 190),
+      yt("Chef Boy - Gang Gang (Official Video) ft Rosecrans hopout, YS, PhoPho8ight & Hitta J3", "Chef Boy", 228),
+      yt("Chef boy, Mozzy, YG & E-40 - \"Gang Gang Gangland\" OFFICIAL VERSION", "StrictlyHits", 190),
+      yt("Chef Boy, Mozzy, YG & E-40 - Gang Gang Gangland (lyrics)", "Ttendosamuel45 Rap", 190),
+      yt("Gang Gang Gangland feat. YG & Mozzy (KDS Mashup)", "Kick Drum Safari", 249),
+    ];
+
+    for (final seconds in [0, 190]) {
+      test("the real song beats the mashup (length ${seconds}s)", () {
+        final t = track(
+          name: "Gang Gang Gangland (feat. YG & Mozzy)",
+          artists: ["Chef Boy", "E-40", "YG", "Mozzy"],
+          seconds: seconds,
+        );
+
+        final ranked = SourcedTrack.rankResults(gangland, t);
+
+        expect(ranked.first.title, startsWith("Chef Boy, Mozzy, YG & E-40"));
+        expect(ranked.last.title, contains("Mashup"));
+      });
+    }
+
+    test("a (with ...) that is part of the title is kept", () {
+      expect(
+        SourcedTrack.coreName(track(name: "W U (With You)", artists: ["JEV"], seconds: 0)),
+        "w u with you",
+      );
+      expect(
+        SourcedTrack.coreName(track(
+          name: "feet2myface (with Allegra Miles)",
+          artists: ["informal.", "Allegra Miles"],
+          seconds: 0,
+        )),
+        "feet2myface",
+      );
+    });
+  });
 }

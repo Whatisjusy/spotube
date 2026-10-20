@@ -21,6 +21,20 @@ import 'package:spotube/services/logger/logger.dart';
 /// the song from 0:00 while the audio source is still being looked up.
 final pendingRestorePositionProvider = StateProvider<Duration?>((ref) => null);
 
+/// [queue] with [track] moved (or added) to straight after the song at
+/// [currentIndex], and the index it should start playing from.
+(List<SpotubeTrackObject>, int) queueWithPlayNow(
+  List<SpotubeTrackObject> queue,
+  int currentIndex,
+  SpotubeTrackObject track,
+) {
+  final current = queue.elementAtOrNull(currentIndex);
+  final rest = queue.where((t) => t.id != track.id).toList();
+  if (current == null || current.id == track.id) return ([track, ...rest], 0);
+  final at = rest.indexWhere((t) => t.id == current.id) + 1;
+  return ([...rest.take(at), track, ...rest.skip(at)], at);
+}
+
 class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
   BlackListNotifier get _blacklist => ref.read(blacklistProvider.notifier);
 
@@ -529,6 +543,15 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
         positionMs: const Value(0),
       ),
     );
+  }
+
+  /// Plays [track] now without throwing the queue away: it goes in straight
+  /// after the current song, and the rest of the queue still follows it.
+  /// Used for songs tapped in search, which used to replace the whole queue.
+  Future<void> playNow(SpotubeTrackObject track) async {
+    final (tracks, index) =
+        queueWithPlayNow(state.tracks, state.currentIndex, track);
+    await load(tracks, initialIndex: index, autoPlay: true);
   }
 
   Future<void> jumpToTrack(SpotubeTrackObject track) async {

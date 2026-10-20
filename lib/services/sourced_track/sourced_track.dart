@@ -15,6 +15,7 @@ import 'package:spotube/provider/youtube_engine/youtube_engine.dart';
 import 'package:spotube/services/dio/dio.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/metadata/errors/exceptions.dart';
+import 'package:spotube/services/network_cost.dart';
 
 import 'package:spotube/services/sourced_track/audio_source_breaker.dart';
 import 'package:spotube/services/sourced_track/exceptions.dart';
@@ -138,6 +139,7 @@ class SourcedTrack extends BasicSourcedTrack {
     "reaction",
     "karaoke",
     "instrumental",
+    "mashup",
   ];
 
   static const musicVideoWords = source_label.musicVideoWords;
@@ -159,6 +161,31 @@ class SourcedTrack extends BasicSourcedTrack {
         .replaceAll(RegExp(r"[^\p{L}\p{N}\s]", unicode: true), "")
         .replaceAll(RegExp(r"\s+"), " ")
         .trim();
+  }
+
+  /// [track]'s name without the featured-artist part, normalized:
+  /// "Gang Gang Gangland (feat. YG & Mozzy)" -> "gang gang gangland".
+  /// YouTube uploads rarely copy Spotify's "(feat. ...)", so matching on the
+  /// whole name dropped every real upload and left a mashup (2026-10-20).
+  /// "(with ...)" goes only when it names one of the song's artists, so
+  /// "W U (With You)" stays whole.
+  static String coreName(SpotubeFullTrackObject track) {
+    final artists = track.artists
+        .map((a) => normalize(a.name))
+        .where((n) => n.isNotEmpty)
+        .toList();
+    final stripped = track.name.replaceAllMapped(
+      RegExp(r"\s*[(\[]([^)\]]*)[)\]]"),
+      (m) {
+        final inner = m[1]!.trim().toLowerCase();
+        final isFeat = RegExp(r"^(feat\.?|ft\.?|featuring)\s").hasMatch(inner);
+        final isWithArtist = inner.startsWith("with ") &&
+            artists.any((a) => normalize(inner).contains(a));
+        return isFeat || isWithArtist ? "" : m[0]!;
+      },
+    );
+    final core = normalize(stripped);
+    return core.isEmpty ? normalize(track.name) : core;
   }
 
   static bool isYouTubeMatch(SpotubeAudioSourceMatchObject m) {
@@ -188,7 +215,7 @@ class SourcedTrack extends BasicSourcedTrack {
   ) {
     final title = normalize(m.title);
     final rawTitle = m.title.toLowerCase();
-    final trackName = normalize(track.name);
+    final trackName = coreName(track);
     final trackNameLower = track.name.toLowerCase();
     final channel = m.artists.firstOrNull ?? "";
     final channelNorm = normalize(channel)
@@ -197,7 +224,27 @@ class SourcedTrack extends BasicSourcedTrack {
 
     var score = 0;
 
-    if (channel.trim().toLowerCase().endsWith("- topic")) score += 6;
+    // A Topic channel is the label's upload only for the song's own artist.
+    // Another artist's Topic upload of a same-named song used to win 9 to 5
+    // on the phone (2026-10-20, "I FEEL STRANGE" by pluko got Ccapöne's).
+    final artistNames = track.artists
+        .map((a) => normalize(a.name))
+        .where((n) => n.isNotEmpty)
+        .toList();
+    final channelIsArtist = artistNames
+        .any((name) => channelNorm == name || channelNorm.contains(name));
+    final artistInTitle = artistNames.any(title.contains);
+
+    if (channel.trim().toLowerCase().endsWith("- topic")) {
+      score += artistNames.isEmpty || channelIsArtist ? 6 : -4;
+    }
+    // No artist anywhere: most likely someone else's song with this name.
+    if (artistNames.isNotEmpty &&
+        channel.isNotEmpty &&
+        !channelIsArtist &&
+        !artistInTitle) {
+      score -= 3;
+    }
 
     if (cleanAudioWords.any((w) => rawTitle.contains(w))) score += 3;
 
@@ -251,7 +298,7 @@ class SourcedTrack extends BasicSourcedTrack {
     final youtube = results.where(isYouTubeMatch).toList();
     if (youtube.isEmpty) return others;
 
-    final trackName = normalize(track.name);
+    final trackName = coreName(track);
     var plausible = youtube.where((m) {
       final title = normalize(m.title);
       return trackName.isEmpty ||
@@ -317,6 +364,35 @@ class SourcedTrack extends BasicSourcedTrack {
     return "${track.artists.map((a) => a.name).join(" ")} ${track.name}".trim();
   }
 
+  /// [youtubeQueryFor] without the bracketed parts of the name:
+  /// "Jon Casey Angrybaby CLENCH MY FIST".
+  static String youtubeSimpleQueryFor(SpotubeFullTrackObject track) {
+    final name =
+        track.name.replaceAll(RegExp(r"\s*[(\[][^)\]]*[)\]]"), "").trim();
+    return "${track.artists.map((a) => a.name).join(" ")} "
+            "${name.isEmpty ? track.name : name}"
+        .trim();
+  }
+
+  /// YouTube search for [track]. YouTube finds nothing for some full names:
+  /// "Jon Casey Angrybaby CLENCH MY FIST (Jon Casey VIP)" gave 0 results on
+  /// the phone and the Mac (2026-10-20), while the same search without
+  /// "(Jon Casey VIP)" listed that exact upload. So an empty result is
+  /// searched again without the brackets; ranking still uses the full name,
+  /// so the VIP still beats the original.
+  static Future<List<Video>> searchYouTubeFor(
+    YouTubeEngine engine,
+    SpotubeFullTrackObject track,
+  ) async {
+    final full = youtubeQueryFor(track);
+    final videos = await searchYouTubeCleanFirst(engine, full);
+    if (videos.isNotEmpty) return videos;
+    final simple = youtubeSimpleQueryFor(track);
+    if (simple == full) return videos;
+    AppLogger.log.i("YouTube found nothing for \"$full\"; trying \"$simple\"");
+    return searchYouTubeCleanFirst(engine, simple);
+  }
+
   /// Turns engine search results into the match shape plugins send.
   static List<SpotubeAudioSourceMatchObject> matchesFromVideos(
     List<Video> videos,
@@ -357,8 +433,7 @@ class SourcedTrack extends BasicSourcedTrack {
     YouTubeEngine engine,
     SpotubeFullTrackObject track,
   ) async {
-    final videos =
-        await searchYouTubeCleanFirst(engine, youtubeQueryFor(track));
+    final videos = await searchYouTubeFor(engine, track);
     return rankResults(matchesFromVideos(videos), track);
   }
 
@@ -375,10 +450,18 @@ class SourcedTrack extends BasicSourcedTrack {
     required YouTubeEngine engine,
     Duration hardLimit = streamsHardLimit,
     AudioSourceBreaker? breaker,
+    bool? skipPlugin,
   }) async {
     breaker ??= audioSourceBreaker;
     final watch = Stopwatch()..start();
-    if (breaker.isOpen) {
+    // On mobile data the compressed YouTube stream is what plays anyway, so
+    // waiting for the plugin (often 10-20 s on a phone) buys nothing.
+    if (skipPlugin ?? NetworkCost.onMobileData) {
+      AppLogger.log.d(
+        "Audio source plugin skipped for \"${query.name}\" (mobile data); "
+        "using YouTube directly",
+      );
+    } else if (breaker.isOpen) {
       AppLogger.log.d(
         "Audio source plugin skipped for \"${query.name}\" (breaker open); "
         "using YouTube directly",
@@ -444,7 +527,12 @@ class SourcedTrack extends BasicSourcedTrack {
     List<SpotubeAudioSourceMatchObject>? searchResults;
     var fromFallback = false;
     final watch = Stopwatch()..start();
-    if (audioSourceBreaker.isOpen) {
+    if (NetworkCost.onMobileData) {
+      AppLogger.log.d(
+        "Audio source plugin skipped for \"${query.name}\" (mobile data); "
+        "searching YouTube directly",
+      );
+    } else if (audioSourceBreaker.isOpen) {
       AppLogger.log.d(
         "Audio source plugin skipped for \"${query.name}\" (breaker open); "
         "searching YouTube directly",
@@ -469,10 +557,9 @@ class SourcedTrack extends BasicSourcedTrack {
       }
     }
     if (searchResults == null) {
-      searchResults = matchesFromVideos(await searchYouTubeCleanFirst(
-        ref.read(youtubeEngineProvider),
-        youtubeQueryFor(query),
-      ));
+      searchResults = matchesFromVideos(
+        await searchYouTubeFor(ref.read(youtubeEngineProvider), query),
+      );
       fromFallback = true;
     }
 
@@ -624,15 +711,54 @@ class SourcedTrack extends BasicSourcedTrack {
     return sourcedTrack;
   }
 
+  /// Stream picked when this track last started from byte 0. Seeks reuse it,
+  /// so a Wi-Fi/mobile change mid-song cannot swap files under the decoder.
+  SpotubeAudioSourceStreamObject? _pinnedStream;
+
+  /// The engine is starting this track from the beginning: pick again for
+  /// the current network.
+  void pickStreamForNewPlay() => _pinnedStream = null;
+
   /// The stream that will actually be played for the current streaming
-  /// settings, after any format fallback.
-  SpotubeAudioSourceStreamObject? get activeStream {
+  /// settings and network, after any format fallback.
+  SpotubeAudioSourceStreamObject? get activeStream =>
+      _pinnedStream ??= _pickStream();
+
+  SpotubeAudioSourceStreamObject? _pickStream() {
+    if (NetworkCost.onMobileData) {
+      final saver = dataSaverStream(sources);
+      if (saver != null) return saver;
+    }
+    return fullQualityStream;
+  }
+
+  /// The stream for the chosen preset, ignoring the network.
+  SpotubeAudioSourceStreamObject? get fullQualityStream {
     final preferences = ref.read(audioSourcePresetsProvider);
 
     return getStreamOfQuality(
       preferences.presets[preferences.selectedStreamingContainerIndex],
       preferences.selectedStreamingQualityIndex,
     );
+  }
+
+  /// On mobile data: a compressed stream (Opus first, then AAC) at the
+  /// lowest bitrate from 112 kbps up, about 1 MB a minute, instead of FLAC.
+  /// Null when [sources] has no compressed stream.
+  static SpotubeAudioSourceStreamObject? dataSaverStream(
+    List<SpotubeAudioSourceStreamObject> sources,
+  ) {
+    for (final container in const ["webm", "mp4"]) {
+      final candidates =
+          sources.where((s) => s.container == container).toList();
+      if (candidates.isEmpty) continue;
+      final decent = candidates
+          .where((s) => (s.bitrate ?? 0) >= 112000)
+          .sortedBy<num>((s) => s.bitrate!);
+      if (decent.isNotEmpty) return decent.first;
+      return candidates.sortedBy<num>((s) => -(s.bitrate ?? 0)).first;
+    }
+    return null;
   }
 
   String? get url => activeStream?.url;

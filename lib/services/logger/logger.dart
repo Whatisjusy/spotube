@@ -29,8 +29,15 @@ class AppLogger {
   static late final File logFile;
 
   static initialize(bool verbose) {
+    // Release builds on iPhone also keep info lines (source picks, format
+    // fallbacks, plugin timings) in the log file, so phone playback can be
+    // checked afterwards. The default filter drops everything in release.
+    final keepInFile = kReleaseMode && kIsIOS;
     log = Logger(
       level: kDebugMode || (verbose && kReleaseMode) ? Level.all : Level.info,
+      filter: keepInFile ? ProductionFilter() : null,
+      printer: keepInFile ? SimplePrinter(printTime: true, colors: false) : null,
+      output: keepInFile ? _LogFileOutput() : null,
     );
   }
 
@@ -108,6 +115,10 @@ class AppLogger {
     if (!await file.exists()) {
       await file.create(recursive: true);
     }
+    // The iPhone log also gets info lines; start fresh past 5 MB.
+    if (kIsIOS && await file.length() > 5 * 1024 * 1024) {
+      await file.writeAsString("");
+    }
     return file;
   }
 
@@ -140,6 +151,20 @@ class AppLogger {
       }
     }
     return join(Platform.environment["HOME"] ?? "", ".local", "state");
+  }
+}
+
+class _LogFileOutput extends LogOutput {
+  @override
+  void output(OutputEvent event) {
+    try {
+      AppLogger.logFile.writeAsStringSync(
+        "${event.lines.join("\n")}\n",
+        mode: FileMode.writeOnlyAppend,
+      );
+    } catch (_) {
+      // logFile is set a moment after start-up; earlier lines are dropped.
+    }
   }
 }
 

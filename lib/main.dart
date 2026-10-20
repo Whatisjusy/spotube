@@ -42,6 +42,8 @@ import 'package:spotube/provider/connect/clients.dart';
 import 'package:spotube/provider/user_preferences/user_preferences_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/cli/cli.dart';
+import 'package:spotube/services/network_cost.dart';
+import 'package:spotube/services/youtube_engine/youtube_probe.dart';
 import 'package:spotube/services/kv_store/encrypted_kv_store.dart';
 import 'package:spotube/services/kv_store/kv_store.dart';
 import 'package:spotube/services/logger/logger.dart';
@@ -94,6 +96,18 @@ Future<void> main(List<String> rawArgs) async {
     }
 
     await KVStoreService.initialize();
+    await NetworkCost.initialize();
+    // Diagnostic (2026-10-20): which YouTube endpoints this phone's network
+    // can reach; Google sends some mobile networks to its robot check.
+    if (kIsIOS && kReleaseMode) {
+      unawaited(probeYouTube().then((lines) {
+        for (final line in lines) {
+          AppLogger.log.i("YouTube probe [${NetworkCost.onMobileData ? "mobile data" : "Wi-Fi"}] $line");
+        }
+      }).catchError((Object e) {
+        AppLogger.log.w("YouTube probe crashed: $e");
+      }));
+    }
 
     if (kIsDesktop) {
       await windowManager.setPreventClose(true);
@@ -121,7 +135,7 @@ Future<void> main(List<String> rawArgs) async {
     }
 
     if (kIsIOS) {
-      HomeWidget.setAppGroupId("group.spotube_home_player_widget");
+      HomeWidget.setAppGroupId("group.nz.kahustudio.spotube");
     }
 
     runApp(

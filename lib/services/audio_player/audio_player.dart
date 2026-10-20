@@ -18,8 +18,14 @@ part 'audio_player_impl.dart';
 class SpotubeMedia extends mk.Media {
   static int serverPort = 0;
 
-  static String get _host =>
-      kIsWindows ? "localhost" : InternetAddress.anyIPv4.address;
+  // iOS 27 refuses connections to 0.0.0.0 ("Connection refused" for every
+  // track), so the phone uses loopback. The playback server listens on
+  // loopback whether or not Connect is on.
+  static String get _host => kIsWindows
+      ? "localhost"
+      : kIsIOS
+          ? InternetAddress.loopbackIPv4.address
+          : InternetAddress.anyIPv4.address;
 
   final SpotubeTrackObject track;
   SpotubeMedia(this.track)

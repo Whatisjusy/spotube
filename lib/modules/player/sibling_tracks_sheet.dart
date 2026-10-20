@@ -46,10 +46,17 @@ class SiblingTracksSheet extends HookConsumerWidget {
         [sourcedTrack],
       );
 
+      // Track the versions were looked up for. Without it, a song with no
+      // other versions was searched again on every rebuild, as fast as
+      // YouTube answered (phone, 2026-10-20: 5 searches in 2.6 s).
+      final siblingsFetchedFor = useRef<String?>(null);
+
       useEffect(() {
         /// Populate sibling when active track changes
         if (sourcedTrack.asData?.value != null &&
-            sourcedTrack.asData?.value.siblings.isEmpty == true) {
+            sourcedTrack.asData?.value.siblings.isEmpty == true &&
+            siblingsFetchedFor.value != activeTrack.id) {
+          siblingsFetchedFor.value = activeTrack.id;
           sourcedTrackNotifier.copyWithSibling();
         }
         return null;

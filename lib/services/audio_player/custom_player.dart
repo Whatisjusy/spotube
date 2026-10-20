@@ -14,6 +14,7 @@ class CustomPlayer extends Player {
   final StreamController<AudioPlaybackState> _playerStateStream;
 
   late final List<StreamSubscription> _subscriptions;
+  int? _lastIndex;
 
   int _androidAudioSessionId = 0;
   String _packageName = "";
@@ -43,11 +44,21 @@ class CustomPlayer extends Player {
       }),
       stream.completed.listen((isCompleted) async {
         if (!isCompleted) return;
+        AppLogger.log.i("Player: song played to its end "
+            "(${state.position.inSeconds}s of ${state.duration.inSeconds}s)");
         _playerStateStream.add(AudioPlaybackState.completed);
       }),
       stream.playlist.listen((event) {
         if (event.medias.isEmpty) {
           _playerStateStream.add(AudioPlaybackState.stopped);
+        }
+        // With the "Skip:" lines from SpotubeAudioPlayer, a move with no
+        // request before it was made by the player itself.
+        if (event.index != _lastIndex) {
+          AppLogger.log.i("Player: moved to position ${event.index} "
+              "of ${event.medias.length} (was $_lastIndex, "
+              "${state.position.inSeconds}s into it)");
+          _lastIndex = event.index;
         }
       }),
       stream.error.listen((event) {

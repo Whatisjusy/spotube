@@ -11,6 +11,7 @@ import 'package:spotube/provider/audio_player/state.dart';
 import 'package:spotube/provider/blacklist_provider.dart';
 import 'package:spotube/provider/database/database.dart';
 import 'package:spotube/provider/discord_provider.dart';
+import 'package:spotube/provider/server/server.dart';
 import 'package:spotube/provider/server/sourced_track_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/logger/logger.dart';
@@ -101,6 +102,15 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       );
       if (savedPosition > Duration.zero) {
         _pendingRestorePosition = savedPosition;
+      }
+      // The engine fetches every entry through the local stream server. If
+      // that server isn't listening yet, mpv fails each entry in turn, marks
+      // the whole queue dead and ignores play/next/previous until a new queue
+      // is loaded. So wait for it before opening the restored queue.
+      try {
+        await ref.read(serverProvider.future);
+      } catch (e, stack) {
+        AppLogger.reportError(e, stack);
       }
       await audioPlayer.openPlaylist(
         tracks.asMediaList(),

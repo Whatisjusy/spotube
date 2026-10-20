@@ -42,10 +42,34 @@ class ServerPlaybackRoutes {
   AudioPlayerState get playlist => ref.read(audioPlayerProvider);
   final Dio dio;
 
-  ServerPlaybackRoutes(this.ref) : dio = Dio();
+  ServerPlaybackRoutes(this.ref) : dio = Dio() {
+    unawaited(_sweepStaleTempFiles());
+  }
 
   /// Cache file paths with a background download in flight.
   final _prefetching = <String>{};
+  bool _sweptStaleTempFiles = false;
+
+  /// Removes ".part" / ".prefetch" files left by a previous run that was
+  /// quit mid-download. Nothing survives a restart, so they are all stale,
+  /// and a stale ".part" would otherwise block caching that track for good.
+  Future<void> _sweepStaleTempFiles() async {
+    if (_sweptStaleTempFiles) return;
+    _sweptStaleTempFiles = true;
+    try {
+      final dir = Directory(await UserPreferencesNotifier.getMusicCacheDir());
+      if (!await dir.exists()) return;
+      await for (final entity in dir.list()) {
+        if (entity is File &&
+            (entity.path.endsWith(".part") ||
+                entity.path.endsWith(".prefetch"))) {
+          await entity.delete();
+        }
+      }
+    } catch (e, stack) {
+      AppLogger.reportError(e, stack);
+    }
+  }
 
   /// Downloads [track]'s audio into the music cache ahead of time so the
   /// engine can start it straight from disk. Does nothing when caching is
@@ -55,6 +79,7 @@ class ServerPlaybackRoutes {
     final url = track.url;
     if (url == null) return;
 
+    await _sweepStaleTempFiles();
     final cacheFile = File(await _getTrackCacheFilePath(track));
     if (await cacheFile.exists() || !_prefetching.add(cacheFile.path)) return;
 
@@ -302,35 +327,53 @@ class ServerPlaybackRoutes {
       return res;
     }
 
-    final resStream = res.data!.stream.asBroadcastStream();
-
-    final trackPartialCacheFile = File("${trackCacheFile.path}.part");
-    if (!await trackPartialCacheFile.exists()) {
-      await trackPartialCacheFile.create(recursive: true);
-    }
-
-    // Write the stream to the file based on the range
-    final partialCacheFileSink =
-        trackPartialCacheFile.openWrite(mode: FileMode.writeOnlyAppend);
+    await _sweepStaleTempFiles();
     final contentRange = res.headers.value("content-range") != null
         ? ContentRangeHeader.parse(res.headers.value("content-range") ?? "")
         : ContentRangeHeader(0, 0, 0);
+    final trackPartialCacheFile = File("${trackCacheFile.path}.part");
+
+    // Only one writer per track, and only a whole-file response. The engine
+    // often opens the same track twice at once; two appenders on one ".part"
+    // used to leave a renamed cache file with the slower stream's tail glued
+    // on, plus an orphaned ".part". A seek (range) request must not write
+    // either, and a background prefetch already in flight will produce it.
+    if (contentRange.start != 0 ||
+        await trackPartialCacheFile.exists() ||
+        _prefetching.contains(trackCacheFile.path)) {
+      return res;
+    }
+    await trackPartialCacheFile.create(recursive: true);
+
+    final resStream = res.data!.stream.asBroadcastStream();
+    final partialCacheFileSink = trackPartialCacheFile.openWrite();
+
+    Future<void> discard() async {
+      await partialCacheFileSink.close().catchError((_) {});
+      if (await trackPartialCacheFile.exists()) {
+        await trackPartialCacheFile.delete();
+      }
+    }
 
     resStream.listen(
       (data) {
         partialCacheFileSink.add(data);
       },
-      onError: (e, stack) {
-        partialCacheFileSink.close();
-      },
+      onError: (e, stack) => discard(),
       onDone: () async {
-        await partialCacheFileSink.close();
-
-        final fileLength = await trackPartialCacheFile.length();
-        if (fileLength != contentRange.total) return;
-
-        await trackPartialCacheFile.rename(trackCacheFile.path);
-        await _tagCacheFile(track, trackCacheFile, fileLength);
+        try {
+          await partialCacheFileSink.close();
+          final fileLength = await trackPartialCacheFile.length();
+          if (fileLength != contentRange.total) {
+            await discard();
+            return;
+          }
+          await trackPartialCacheFile.rename(trackCacheFile.path);
+          await _tagCacheFile(track, trackCacheFile, fileLength);
+        } catch (e, stack) {
+          AppLogger.reportError(e, stack);
+          await discard();
+        }
       },
       cancelOnError: true,
     );

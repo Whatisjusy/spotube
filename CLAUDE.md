@@ -81,6 +81,15 @@ make migrate                      # drift DB migrations after schema changes
   paused triggered the lookup 1 s later. A skip to a prefetched track logs `GET request for track` with no
   `Response for track` line after it, which means it was served from disk. Cache dir:
   `~/Library/Caches/oss.krtirtho.spotube/cached_tracks/`.
+- Stress-test findings fixed 2026-10-20: (1) the restored queue could open before the stream server
+  listened, mpv then failed all 51 entries ("Connection refused" x80) and ignored play/next/previous
+  until a new queue was loaded; `_syncSavedState` now awaits `serverProvider` first. (2) mpv opens a
+  track twice; two appenders on one `.part` left cache files with the slower stream's tail glued on
+  (ffmpeg scan: 18 of 287 corrupt, moved to `cached_tracks_bad_2026-10-20/`); `streamTrack` now writes
+  only when no `.part` exists, no prefetch is running and the range starts at 0, and sweeps stale
+  `.part`/`.prefetch` once per launch. Check a cached file with `ffmpeg -v error -i <f> -f null -`.
+- Known slow path: skipping past the prepared window is a cold lookup per track, and while
+  `api.monochrome.tf` is unreachable each one burns the plugin's 4 s timeout first (~10 s per skip).
 - `markTrackAsActive` in `audio_player.dart` is called from the stream server on every
   `/stream/<id>` GET, so the active index follows what the engine fetches, not only mpv's
   playlist event. Now Playing / Discord follow `activeTrack` via `ref.listen`.

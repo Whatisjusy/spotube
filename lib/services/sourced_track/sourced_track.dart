@@ -268,9 +268,21 @@ class SourcedTrack extends BasicSourcedTrack {
     return [...others, ...scored.map((e) => e.match)];
   }
 
-  /// How long a plugin lookup (matches or streams) may take before the app
-  /// finds the song on YouTube by itself so playback still starts.
-  static const audioSourceTimeout = Duration(seconds: 4);
+  /// How long the plugin's `matches` may take before the app finds the song
+  /// on YouTube by itself so playback still starts.
+  ///
+  /// Measured 2026-10-20 (yt-dlp engine, Lossless Sources plugin): a match
+  /// completes in about 2 s when Monochrome has the song, and about 6 s when
+  /// it has to try hifi-api and then YouTube (two 1.5-1.8 s searches).
+  static const matchesTimeout = Duration(seconds: 10);
+
+  /// How long the plugin's `streams` may take. Measured about 6-7 s for a
+  /// lossless match: a HEAD check, a YouTube search (1.8 s) and a stream
+  /// manifest (3.5 s, 4.5 s with three in flight) because the plugin adds a
+  /// lossy stream to every lossless match. Prefetching several songs at once
+  /// queues these through a 3-at-a-time gate, so give it room. The old 4 s
+  /// limit tripped on almost every lossless song and silently played Opus.
+  static const streamsTimeout = Duration(seconds: 15);
 
   /// Skips the plugin for a minute after three timeouts in a row, so a dead
   /// plugin server costs one timeout per minute instead of one per song.
@@ -354,7 +366,7 @@ class SourcedTrack extends BasicSourcedTrack {
     required SpotubeAudioSourceMatchObject match,
     required SpotubeFullTrackObject query,
     required YouTubeEngine engine,
-    Duration timeout = audioSourceTimeout,
+    Duration timeout = streamsTimeout,
     AudioSourceBreaker? breaker,
   }) async {
     breaker ??= audioSourceBreaker;
@@ -433,14 +445,14 @@ class SourcedTrack extends BasicSourcedTrack {
       try {
         searchResults = await audioSource.audioSource
             .matches(query)
-            .timeout(audioSourceTimeout);
+            .timeout(matchesTimeout);
         audioSourceBreaker.recordSuccess();
         AppLogger.log.d(
           "matches for \"${query.name}\" took ${watch.elapsedMilliseconds} ms",
         );
       } on TimeoutException {
         AppLogger.log.w(
-          "Audio source plugin took over ${audioSourceTimeout.inSeconds}s to "
+          "Audio source plugin took over ${matchesTimeout.inSeconds}s to "
           "match \"${query.name}\"; searching YouTube directly",
         );
         if (audioSourceBreaker.recordTimeout()) {

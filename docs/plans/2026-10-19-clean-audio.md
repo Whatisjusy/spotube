@@ -174,6 +174,20 @@ its own at 20:09: "bLAcK oPs (m@n!a)" (The Pretty Wild) has no row in
 over 4 s). Still to check once the console is readable: the warning line
 and elapsed-ms lines.
 
+Re-tuned 2026-10-20 from data. With the yt-dlp engine and the new
+"prepare 3 next + 1 previous" prefetch, the 4 s limit tripped on almost
+every lossless song (8 of 10 in one run: Paranoid, Gas Craic, SYRINX, Mona
+Lisa, Fugazi, Blessed Be, Lucid Dreaming, Take My Heart all had a Monochrome
+or hifi match and played Opus instead). Measured from the shell: Monochrome
+answers in 0.9 s, hifi-api in 0.8-2 s, a yt-dlp songs search 1.5 s, plain
+search 1.8 s, one stream manifest 3.5 s (4.5 s with three in flight). The
+plugin's `streams` for a lossless match does HEAD + search + manifest, about
+6-7 s alone, and the prefetch queues these through the 3-at-a-time plugin
+call gate. `matches` measured 2 s when found on Monochrome, about 6 s when
+it falls through to YouTube. New limits: `matchesTimeout` 10 s,
+`streamsTimeout` 15 s. A truly dead host still ends in a YouTube stand-in,
+just later; the plugin's own HTTP calls carry no timeout of their own.
+
 ### Phase 6. Prefer webm (Opus) over mp4 on YouTube
 
 - [x] In the Phase 1 fallback order, webm before mp4 (already listed).

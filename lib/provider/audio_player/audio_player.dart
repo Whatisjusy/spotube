@@ -15,6 +15,11 @@ import 'package:spotube/provider/server/sourced_track_provider.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/logger/logger.dart';
 
+/// Where the restored track will be seeked to once it has loaded. The player
+/// bar shows this straight away so a relaunch never looks like it started
+/// the song from 0:00 while the audio source is still being looked up.
+final pendingRestorePositionProvider = StateProvider<Duration?>((ref) => null);
+
 class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
   BlackListNotifier get _blacklist => ref.read(blacklistProvider.notifier);
 
@@ -36,7 +41,10 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
   }
 
   /// Position to seek to once the restored track has loaded (null = none).
-  Duration? _pendingRestorePosition;
+  Duration? get _pendingRestorePosition =>
+      ref.read(pendingRestorePositionProvider);
+  set _pendingRestorePosition(Duration? value) =>
+      ref.read(pendingRestorePositionProvider.notifier).state = value;
   DateTime _lastPositionSave = DateTime.fromMillisecondsSinceEpoch(0);
   static const _positionSaveInterval = Duration(seconds: 5);
 
@@ -182,8 +190,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
               tracks: Value(state.tracks),
               // A new track starts from the top; a stale position from the
               // previous one must not survive a relaunch.
-              positionMs:
-                  trackChanged ? const Value(0) : const Value.absent(),
+              positionMs: trackChanged ? const Value(0) : const Value.absent(),
             ),
           );
         } catch (e, stack) {

@@ -84,6 +84,8 @@ make migrate                      # drift DB migrations after schema changes
   while playing and exactly on pause, reset to 0 on track change. On launch `_syncSavedState` stores it
   in `_pendingRestorePosition` and seeks once `durationStream` reports the track loaded (log line
   `Resumed last session at Ns of Ms`). Position writes are skipped until that seek has happened.
+  The seek can take 15 s+ (source lookup), so `useProgress` shows `pendingRestorePositionProvider`
+  in the player bar straight away; otherwise a relaunch looks like it forgot the spot.
 - **Look: Everforest, copied from Feishin** (owner picked it from a mood board, 2026-10-19). Theme lives in
   `lib/themes/everforest.dart` (colours as a shadcn `ColorScheme`, Inter typography with Feishin's sizes,
   radius 0.35) and is wired in `main.dart`; glass surfaces are off (`surfaceOpacity: 1, surfaceBlur: 0`).

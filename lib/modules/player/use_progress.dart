@@ -1,5 +1,6 @@
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:spotube/provider/audio_player/audio_player.dart';
 import 'package:spotube/services/audio_player/audio_player.dart';
 
 ({
@@ -14,8 +15,20 @@ import 'package:spotube/services/audio_player/audio_player.dart';
   final duration = useState(Duration.zero);
   final position = useState(Duration.zero);
 
-  final sliderMax = duration.value.inSeconds;
-  final sliderValue = position.value.inSeconds;
+  // After a relaunch the engine reports 0:00 until the track has loaded and
+  // been seeked. Show the saved spot (and the track's known length) meanwhile.
+  final pendingRestore = ref.watch(pendingRestorePositionProvider);
+  final trackDurationMs = ref.watch(
+    audioPlayerProvider.select((s) => s.activeTrack?.durationMs ?? 0),
+  );
+  final shownPosition = pendingRestore ?? position.value;
+  final shownDuration =
+      duration.value == Duration.zero && pendingRestore != null
+          ? Duration(milliseconds: trackDurationMs)
+          : duration.value;
+
+  final sliderMax = shownDuration.inSeconds;
+  final sliderValue = shownPosition.inSeconds;
 
   useEffect(() {
     duration.value = audioPlayer.duration;
@@ -48,8 +61,8 @@ import 'package:spotube/services/audio_player/audio_player.dart';
   return (
     progressStatic:
         sliderMax == 0 || sliderValue > sliderMax ? 0 : sliderValue / sliderMax,
-    position: position.value,
-    duration: duration.value,
+    position: shownPosition,
+    duration: shownDuration,
     bufferProgress: sliderMax == 0 || bufferProgress > sliderMax
         ? 0
         : bufferProgress / sliderMax,

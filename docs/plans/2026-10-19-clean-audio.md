@@ -188,6 +188,23 @@ it falls through to YouTube. New limits: `matchesTimeout` 10 s,
 `streamsTimeout` 15 s. A truly dead host still ends in a YouTube stand-in,
 just later; the plugin's own HTTP calls carry no timeout of their own.
 
+Second pass, same day. The other chat had added a breaker (skip the plugin
+for 60 s after 3 timeouts in a row). With the limits counting queue time in
+the shared 3-wide plugin gate, 5 timeouts opened the breaker and every song
+for a minute went to Opus. Fixed by giving each plugin its own gate and
+starting the clock only once a call has a slot (`invokeWithRetry(timeout:)`).
+Run after that fix (8 songs + prefetch): matches 1.5-4.1 s, streams
+7.5-13.8 s of plugin time, queue waits 1.3-4.4 s, 2 timeouts, no breaker
+opens. So `streamsTimeout` is now 20 s, and the yt-dlp Songs search is
+dropped (flat listings carry no channel or length, so those results never
+won the ranking but cost a process per lookup).
+
+Finding: every hifi-api match in that run (20 of 48 saved picks) played
+Opus with no timeout, i.e. the plugin's streams for hifi-api matches carry
+no playable FLAC right now (the instances answer, but the file check fails
+or the Hi-Res DASH variant is skipped), so it falls to its YouTube backup.
+Monochrome matches play FLAC. Source-side; nothing to fix in the app.
+
 ### Phase 6. Prefer webm (Opus) over mp4 on YouTube
 
 - [x] In the Phase 1 fallback order, webm before mp4 (already listed).

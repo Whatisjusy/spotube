@@ -11,9 +11,9 @@ void main() {
       await YtDlp.instance.setBinaryLocation("/opt/homebrew/bin/yt-dlp");
       final engine = YtDlpEngine();
 
-      final songs = await engine.searchSongs("Jersey U&I");
-      expect(songs, isNotEmpty);
-      expect(songs.first.title, "U&I");
+      // Songs search is deliberately empty on yt-dlp (no channel/length in
+      // flat listings); the plain search must carry both.
+      expect(await engine.searchSongs("Jersey U&I"), isEmpty);
 
       final videos = await engine.searchVideos("Jersey U&I");
       expect(videos, isNotEmpty);

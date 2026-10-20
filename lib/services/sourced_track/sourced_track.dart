@@ -278,13 +278,14 @@ class SourcedTrack extends BasicSourcedTrack {
   /// it has to try hifi-api and then YouTube (two 1.5-1.8 s searches).
   static const matchesTimeout = Duration(seconds: 10);
 
-  /// How long the plugin's `streams` may take. Measured about 6-7 s for a
-  /// lossless match: a HEAD check, a YouTube search (1.8 s) and a stream
-  /// manifest (3.5 s, 4.5 s with three in flight) because the plugin adds a
-  /// lossy stream to every lossless match. Prefetching several songs at once
-  /// queues these through a 3-at-a-time gate, so give it room. The old 4 s
-  /// limit tripped on almost every lossless song and silently played Opus.
-  static const streamsTimeout = Duration(seconds: 15);
+  /// How long the plugin's `streams` may take, queue time excluded. For a
+  /// lossless match the plugin does a HEAD check, a YouTube search (1.8 s)
+  /// and a stream manifest (3.5 s alone) because it adds a lossy stream to
+  /// every lossless match; with 3 next + 1 previous song prefetched the
+  /// measured plugin time was 7.5-13.8 s (2026-10-20, 10 calls), so 15 s
+  /// still tripped twice. The old 4 s limit tripped on almost every
+  /// lossless song and silently played Opus.
+  static const streamsTimeout = Duration(seconds: 20);
 
   /// Absolute cap on a `streams` call including any time spent queued
   /// behind other plugin calls; only a stuck gate should ever reach it.

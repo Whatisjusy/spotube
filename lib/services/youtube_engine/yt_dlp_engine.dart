@@ -178,30 +178,14 @@ class YtDlpEngine implements YouTubeEngine {
     return json.map((e) => _parseInfo(e)).toList();
   }
 
+  /// YouTube Music "Songs" search is not used on yt-dlp. A flat listing of
+  /// the Songs tab carries only id and title (no channel, no length), so the
+  /// clean-audio ranking cannot score those results and they never beat a
+  /// plain-search lyric video of the right length, while the extra process
+  /// cost 1.5 s of CPU per lookup under prefetch load (measured
+  /// 2026-10-20). The plain search below carries channel and length.
   @override
-  Future<List<Video>> searchSongs(String query) async {
-    // yt-dlp understands YouTube Music search pages; "#songs" picks the tab.
-    final stdout = await YtDlp.instance.extractInfoString(
-      "https://music.youtube.com/search?q=${Uri.encodeQueryComponent(query)}#songs",
-      formatSpecifiers: "%()j",
-      extraArgs: [
-        "--skip-download",
-        "--no-check-certificate",
-        "--geo-bypass",
-        "--quiet",
-        "--ignore-errors",
-        "--flat-playlist",
-        "--playlist-end",
-        "10",
-      ],
-    );
-
-    final json = jsonDecode(
-      "[${stdout.split("\n").where((s) => s.trim().isNotEmpty).join(",")}]",
-    ) as List;
-
-    return json.map((e) => _parseInfo(e)).toList();
-  }
+  Future<List<Video>> searchSongs(String query) async => const [];
 
   @override
   void dispose() {}

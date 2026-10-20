@@ -4,7 +4,8 @@ Goal: every song plays the studio master. Lossless FLAC when it exists,
 otherwise YouTube's label-provided audio (Topic / Official Audio), never a
 music video. All logic lives in the app, so it works whichever plugin answers.
 
-Decided 2026-10-19. Status key: [ ] todo, [~] in progress, [x] done.
+Decided 2026-10-19. All 9 phases done 2026-10-20. Status key: [ ] todo, [~] in progress, [x] done.
+Still to see live: Phase 8 button, FLAC badge text, red badge on a music video, Phase 3/4 picks on YouTube-only songs.
 
 ## Facts this plan rests on (verified 2026-10-19)
 
@@ -226,12 +227,19 @@ other session's migration.
 
 ### Phase 9. Clear the old picks
 
-- [ ] Back up `db.sqlite` first (copy next to it with a date suffix).
-- [ ] `delete from source_match_table` so every song re-picks under the new
+- [x] Back up `db.sqlite` first (copy next to it with a date suffix).
+- [x] `delete from source_match_table` so every song re-picks under the new
       rules. Do this after Phases 1 to 4 are in, not before.
-- [ ] Tell the user the first play of each song will be a touch slower once.
+- [x] Tell the user the first play of each song will be a touch slower once.
 
 Estimate: 5 min.
+
+Done 2026-10-20 09:40. Backup: `db.sqlite.bak-2026-10-20-before-clearing-picks`
+(289 rows: 209 youtube-audio, 80 lossless-sources; made with sqlite3
+`.backup`, journal mode was `delete`, no WAL). Then `delete from
+source_match_table` while the app was running; it keeps working and
+re-matches each song on its next play. To restore: stop the app, copy the
+backup over `db.sqlite`.
 
 ## Order
 

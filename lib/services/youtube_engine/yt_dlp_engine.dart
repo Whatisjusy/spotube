@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:collection/collection.dart';
 import 'package:spotube/services/youtube_engine/youtube_engine.dart';
@@ -78,9 +79,31 @@ class YtDlpEngine implements YouTubeEngine {
 
   static bool get isAvailableForPlatform => kIsDesktop;
 
+  /// Places package managers put yt-dlp that a Dock-launched Mac app (bare
+  /// system PATH) or a Linux desktop app cannot see.
+  static List<String> get knownLocations {
+    final home = Platform.environment["HOME"] ?? "";
+    return [
+      "/opt/homebrew/bin/yt-dlp",
+      "/usr/local/bin/yt-dlp",
+      if (home.isNotEmpty) "$home/.local/bin/yt-dlp",
+      "/usr/bin/yt-dlp",
+    ];
+  }
+
+  /// The yt-dlp binary to use: "yt-dlp" when it is in PATH, else the first
+  /// known location that exists, else null.
+  static Future<String?> findBinary() async {
+    if (!isAvailableForPlatform) return null;
+    if (await YtDlp.instance.checkAvailableInPath()) return "yt-dlp";
+    for (final location in knownLocations) {
+      if (await File(location).exists()) return location;
+    }
+    return null;
+  }
+
   static Future<bool> isInstalled() async {
-    return isAvailableForPlatform &&
-        await YtDlp.instance.checkAvailableInPath();
+    return await findBinary() != null;
   }
 
   @override

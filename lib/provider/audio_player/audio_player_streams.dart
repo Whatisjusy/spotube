@@ -17,6 +17,7 @@ import 'package:spotube/provider/user_preferences/user_preferences_provider.dart
 import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/audio_services/audio_services.dart';
 import 'package:spotube/services/logger/logger.dart';
+import 'package:spotube/services/sourced_track/sourced_track.dart';
 
 class AudioPlayerStreamListeners {
   final Ref ref;
@@ -27,11 +28,13 @@ class AudioPlayerStreamListeners {
     );
 
     listenToActiveTrack();
+    listenToQueueChanges();
 
     final subscriptions = [
       subscribeToSkipSponsor(),
       subscribeToScrobbleChanged(),
       subscribeToPosition(),
+      subscribeToDuration(),
       subscribeToPlayerError(),
     ];
 
@@ -150,20 +153,34 @@ class AudioPlayerStreamListeners {
   /// Tracks already prepared this session (looked up once, success or not).
   final _preparedTrackIds = <String>{};
   bool _preparing = false;
+  bool _prepareAgain = false;
 
-  StreamSubscription subscribeToPosition() {
-    return audioPlayer.positionStream.listen((event) async {
-      // A few seconds into a track, prepare the ones around it so skipping in
-      // either direction doesn't stall on a source lookup.
-      if (event < const Duration(seconds: 5) || _preparing) return;
-      final index = audioPlayerState.currentIndex;
-      if (index == -1) return;
+  /// Is the playing track's own source lookup done? Neighbours wait for it so
+  /// they never compete with the song the listener is actually waiting on.
+  bool get _currentTrackReady {
+    final track = audioPlayerState.activeTrack;
+    if (track is! SpotubeFullTrackObject) return track != null;
+    return ref.read(sourcedTrackProvider(track)).hasValue;
+  }
 
-      _preparing = true;
-      try {
+  /// Looks up (and, for the next few, downloads) the tracks around the
+  /// playing one. Safe to call often: already-prepared tracks are skipped and
+  /// overlapping calls fold into one extra pass.
+  Future<void> _prepareNearbyTracks() async {
+    if (_preparing) {
+      _prepareAgain = true;
+      return;
+    }
+    _preparing = true;
+    try {
+      do {
+        _prepareAgain = false;
+        final index = audioPlayerState.currentIndex;
+        if (index == -1 || !_currentTrackReady) break;
+
         for (final offset in _lookaheadOffsets) {
-          // The listener moved on; the next tick starts over from there.
-          if (audioPlayerState.currentIndex != index) break;
+          // The listener moved on or edited the queue; start over from there.
+          if (audioPlayerState.currentIndex != index || _prepareAgain) break;
 
           final tracks = audioPlayerState.tracks;
           final i = index + offset;
@@ -178,18 +195,59 @@ class AudioPlayerStreamListeners {
           try {
             final sourced = await ref.read(sourcedTrackProvider(track).future);
             if (offset > 0 && offset <= _audioPrefetchCount) {
-              unawaited(
-                ref.read(serverPlaybackRoutesProvider).prefetchToCache(sourced),
-              );
+              _enqueueDownload(sourced);
             }
           } catch (e, stack) {
             AppLogger.reportError(e, stack);
           }
         }
+      } while (_prepareAgain);
+    } finally {
+      _preparing = false;
+    }
+  }
+
+  final _downloadQueue = <SourcedTrack>[];
+  bool _downloading = false;
+
+  /// Starts downloading straight away, one file at a time so the playing
+  /// track keeps most of the bandwidth.
+  void _enqueueDownload(SourcedTrack track) {
+    _downloadQueue.add(track);
+    if (_downloading) return;
+    _downloading = true;
+    unawaited(() async {
+      try {
+        final routes = ref.read(serverPlaybackRoutesProvider);
+        while (_downloadQueue.isNotEmpty) {
+          await routes.prefetchToCache(_downloadQueue.removeAt(0));
+        }
       } finally {
-        _preparing = false;
+        _downloading = false;
       }
+    }());
+  }
+
+  /// Any queue edit (play next, add to queue, reorder, new queue) re-checks
+  /// the neighbours straight away, even while paused.
+  void listenToQueueChanges() {
+    ref.listen(
+      audioPlayerProvider.select((s) => s.tracks),
+      (previous, tracks) => _prepareNearbyTracks(),
+    );
+  }
+
+  /// The playing track has loaded (also covers a paused restore at launch).
+  StreamSubscription subscribeToDuration() {
+    return audioPlayer.durationStream.listen((duration) {
+      if (duration > Duration.zero) _prepareNearbyTracks();
     });
+  }
+
+  /// Fallback while playing: catches a source lookup that finished after the
+  /// other triggers fired. Cheap, because prepared tracks are skipped.
+  StreamSubscription subscribeToPosition() {
+    return audioPlayer.positionStream.listen((_) => _prepareNearbyTracks());
   }
 
   StreamSubscription subscribeToPlayerError() {

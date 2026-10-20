@@ -72,10 +72,13 @@ make migrate                      # drift DB migrations after schema changes
 - Tapping a track in any list = "play from here": queue is that track + the next 50 loaded ones
   (`kQueueWindow` in `use_track_tile_play_callback.dart`). It always rebuilds the queue; it never
   jumps inside an existing queue. The header Play/Shuffle buttons still load the whole collection.
-- Lookahead: 5 s into a track, `subscribeToPosition` in `audio_player_streams.dart` looks up the audio
-  source for queue offsets +1, +2, +3, -1 (`_lookaheadOffsets`), and for +1 and +2 also downloads the
-  whole file into the music cache (`prefetchToCache` in `routes/playback.dart`, only when "cache music"
-  is on, temp file `*.prefetch`). A skip to a prefetched track logs `GET request for track` with no
+- Lookahead: `_prepareNearbyTracks` in `audio_player_streams.dart` looks up the audio source for queue
+  offsets +1, +2, +3, -1 (`_lookaheadOffsets`) and, for +1 and +2, downloads the whole file into the
+  music cache one at a time (`prefetchToCache` in `routes/playback.dart`, only when "cache music" is
+  on, temp file `*.prefetch`). It runs as soon as the playing track's own source is resolved (duration
+  stream), on every queue change (`ref.listen` on tracks, works while paused) and on every position
+  tick; prepared ids are remembered so repeats are free. Tested 2026-10-20: a Connect `reorder` while
+  paused triggered the lookup 1 s later. A skip to a prefetched track logs `GET request for track` with no
   `Response for track` line after it, which means it was served from disk. Cache dir:
   `~/Library/Caches/oss.krtirtho.spotube/cached_tracks/`.
 - `markTrackAsActive` in `audio_player.dart` is called from the stream server on every

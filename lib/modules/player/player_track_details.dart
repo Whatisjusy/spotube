@@ -27,21 +27,37 @@ class PlayerTrackDetails extends HookConsumerWidget {
     return Row(
       children: [
         if (playback.activeTrack != null)
-          Container(
-            padding: const EdgeInsets.all(6),
-            constraints: const BoxConstraints(
-              maxWidth: 80,
-              maxHeight: 80,
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: UniversalImage(
-                path: (track?.album.images)
-                    .asUrlString(placeholder: ImagePlaceholder.albumArt),
-                placeholder: Assets.images.albumPlaceholder.path,
+          // Local: on desktop layouts, clicking the artwork opens the
+          // full-size Now Playing page.
+          Builder(builder: (context) {
+            final art = Container(
+              padding: const EdgeInsets.all(6),
+              constraints: const BoxConstraints(
+                maxWidth: 80,
+                maxHeight: 80,
               ),
-            ),
-          ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: UniversalImage(
+                  path: (track?.album.images)
+                      .asUrlString(placeholder: ImagePlaceholder.albumArt),
+                  placeholder: Assets.images.albumPlaceholder.path,
+                ),
+              ),
+            );
+            if (mediaQuery.mdAndDown) return art;
+            return Tooltip(
+              tooltip:
+                  const TooltipContainer(child: Text("Now playing")).call,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: () => context.navigateTo(const NowPlayingRoute()),
+                  child: art,
+                ),
+              ),
+            );
+          }),
         if (mediaQuery.mdAndDown)
           Flexible(
             child: Column(

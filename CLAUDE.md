@@ -93,6 +93,9 @@ make migrate                      # drift DB migrations after schema changes
   Sidebar is a darker 240px strip, the player bar is flat and **docked** on desktop layouts
   (`isPlayerDocked` in `bottom_player.dart`; `floatingFooter` and the page bottom padding in
   `root_app.dart` follow it), album/artist titles use h1. Phone/compact layouts keep the floating overlay.
+- **Desktop Now Playing page** (`lib/pages/player/now_playing.dart`, route `now-playing` inside the shell):
+  blurred-art backdrop, big art + title left, Lyrics/Queue tabs right. Opened by clicking the artwork in
+  the bottom bar (`player_track_details.dart`, desktop widths only). Upstream has no desktop Now Playing.
 - Clean-audio plan: `docs/plans/2026-10-19-clean-audio.md`. Phases 1 + 2 done 2026-10-19:
   `getStreamOfQuality` falls back flac -> webm -> mp4 -> anything (never throws on an empty
   list); first run with a plugin defaults to its lossless preset; audio source plugin is now

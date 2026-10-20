@@ -69,6 +69,11 @@ class AppRouter extends RootStackRouter {
               path: "lyrics",
               page: LyricsRoute.page,
             ),
+            // Local: full-size Now Playing page for desktop layouts.
+            AutoRoute(
+              path: "now-playing",
+              page: NowPlayingRoute.page,
+            ),
             AutoRoute(
               path: "settings",
               page: SettingsRoute.page,

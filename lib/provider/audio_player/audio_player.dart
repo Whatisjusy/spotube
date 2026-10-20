@@ -46,6 +46,10 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       ref.read(pendingRestorePositionProvider);
   set _pendingRestorePosition(Duration? value) =>
       ref.read(pendingRestorePositionProvider.notifier).state = value;
+
+  /// The song [_pendingRestorePosition] belongs to. If the listener picks
+  /// another song before it loads, the saved spot must not land on that one.
+  String? _pendingRestoreTrackId;
   DateTime _lastPositionSave = DateTime.fromMillisecondsSinceEpoch(0);
   static const _positionSaveInterval = Duration(seconds: 5);
 
@@ -102,6 +106,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
       );
       if (savedPosition > Duration.zero) {
         _pendingRestorePosition = savedPosition;
+        _pendingRestoreTrackId = tracks.elementAtOrNull(currentIndex)?.id;
       }
       // The engine fetches every entry through the local stream server. If
       // that server isn't listening yet, mpv fails each entry in turn, marks
@@ -226,6 +231,7 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
           final target = _pendingRestorePosition;
           if (target == null || duration <= Duration.zero) return;
           _pendingRestorePosition = null;
+          if (state.activeTrack?.id != _pendingRestoreTrackId) return;
           if (target < duration) {
             await audioPlayer.seek(target);
             AppLogger.log.i(
@@ -508,6 +514,11 @@ class AudioPlayerNotifier extends Notifier<AudioPlayerState> {
   /// fetching [trackId]. Corrects the active index if the engine's own
   /// playlist event was late or missed, so the UI never shows the last song.
   Future<void> markTrackAsActive(String trackId) async {
+    // The engine is fetching a different song than the one saved at the last
+    // quit: the listener picked something else, so drop the saved spot.
+    if (_pendingRestorePosition != null && trackId != _pendingRestoreTrackId) {
+      _pendingRestorePosition = null;
+    }
     final index = state.tracks.indexWhere((t) => t.id == trackId);
     if (index == -1 || index == state.currentIndex) return;
 

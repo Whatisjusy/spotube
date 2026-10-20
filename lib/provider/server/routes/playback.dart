@@ -49,14 +49,22 @@ class ServerPlaybackRoutes {
   /// Cache file paths with a background download in flight, and the token
   /// that stops each one.
   final _prefetching = <String, CancelToken>{};
-  bool _sweptStaleTempFiles = false;
+
+  /// The song the engine most recently asked for from byte 0, noted when the
+  /// request arrives (before its lookup), so a slower earlier request cannot
+  /// mark its song as playing after the listener has skipped past it.
+  String? _latestStartRequest;
+  Future<void>? _staleTempSweep;
 
   /// Removes ".part" / ".prefetch" files left by a previous run that was
   /// quit mid-download. Nothing survives a restart, so they are all stale,
   /// and a stale ".part" would otherwise block caching that track for good.
-  Future<void> _sweepStaleTempFiles() async {
-    if (_sweptStaleTempFiles) return;
-    _sweptStaleTempFiles = true;
+  /// Runs once; later callers wait for that same run, so a new ".part" is
+  /// never created while the sweep could still delete it.
+  Future<void> _sweepStaleTempFiles() =>
+      _staleTempSweep ??= _deleteStaleTempFiles();
+
+  Future<void> _deleteStaleTempFiles() async {
     try {
       final dir = Directory(await UserPreferencesNotifier.getMusicCacheDir());
       if (!await dir.exists()) return;
@@ -173,11 +181,19 @@ class ServerPlaybackRoutes {
   }
 
   /// The complete cached file for [track], or null when there is none or
-  /// caching is off.
+  /// caching is off. An empty file is deleted so the track streams live and
+  /// gets cached again. (It used to fail every request for that track: no
+  /// bytes to serve, and a range request crashed the handler.)
   Future<File?> _cachedFileFor(SourcedTrack track) async {
     if (!userPreferences.cacheMusic) return null;
     final file = File(await _getTrackCacheFilePath(track));
-    return await file.exists() ? file : null;
+    if (!await file.exists()) return null;
+    if (await file.length() > 0) return file;
+    AppLogger.log.w(
+      "Deleted empty cached file for \"${track.query.name}\"; streaming it",
+    );
+    await file.delete().catchError((_) => file);
+    return null;
   }
 
   /// Serves a cached file the way a real HTTP server would: byte ranges are
@@ -453,6 +469,10 @@ class ServerPlaybackRoutes {
   /// @get('/stream/<trackId>')
   Future<Response> getStreamTrackId(Request request, String trackId) async {
     try {
+      final range = request.headers["range"];
+      if (range == null || range.startsWith("bytes=0-")) {
+        _latestStartRequest = trackId;
+      }
       final sourcedTrack = await _getSourcedTrack(request, trackId);
 
       if (sourcedTrack == null) {
@@ -461,7 +481,12 @@ class ServerPlaybackRoutes {
 
       // The engine only fetches a track when it starts playing it, so this is
       // the ground truth for "what's playing" even if its index event is late.
-      ref.read(audioPlayerProvider.notifier).markTrackAsActive(trackId);
+      // Unless the listener skipped on while this request waited for its
+      // lookup: then a newer song has started and this one must not be shown
+      // as playing again.
+      if (_latestStartRequest == trackId) {
+        ref.read(audioPlayerProvider.notifier).markTrackAsActive(trackId);
+      }
 
       final cached = await _cachedFileFor(sourcedTrack);
       if (cached != null) {

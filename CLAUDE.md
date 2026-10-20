@@ -109,6 +109,10 @@ make migrate                      # drift DB migrations after schema changes
 - Debug builds are named **"Spotube Dev"** (set in `macos/Runner/Configs/AppInfo.xcconfig` with
   `PRODUCT_NAME[config=Debug]`). Project-level `Debug.xcconfig` is overridden by that target-level
   file, so put name overrides there. Same bundle id as the installed app, so login/settings are shared.
+- Liked check (2026-10-20): the plugin's `isSavedTracks` uses Spotify's `isCurated`, which is true for a song
+  in ANY of your playlists, so it is no longer used. `likedTrackIdsProvider` (`library/tracks.dart`) loads all
+  Liked Songs ids once per launch (50/page, 0.7 s apart; 3,650 took ~90 s, log `Liked Songs loaded: N tracks`)
+  and answers the menu, player heart and the new heart button in every track row (`track_tile.dart`).
 - Local change: the Getting Started welcome screen never shows on launch (guard removed in `routes.dart`).
 - Resume where you left off: `position_ms` in `audio_player_state_table` (schema v11) is saved every 5 s
   while playing and exactly on pause, reset to 0 on track change. On launch `_syncSavedState` stores it

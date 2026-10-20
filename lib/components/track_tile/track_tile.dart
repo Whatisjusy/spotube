@@ -9,6 +9,7 @@ import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:spotube/collections/routes.gr.dart';
 import 'package:spotube/collections/spotube_icons.dart';
+import 'package:spotube/components/heart_button/heart_button.dart';
 import 'package:spotube/components/hover_builder.dart';
 import 'package:spotube/components/image/universal_image.dart';
 import 'package:spotube/components/links/artist_link.dart';
@@ -16,11 +17,13 @@ import 'package:spotube/components/links/link_text.dart';
 import 'package:spotube/components/track_tile/track_options_button.dart';
 import 'package:spotube/components/ui/button_tile.dart';
 import 'package:spotube/extensions/constrains.dart';
+import 'package:spotube/extensions/context.dart';
 import 'package:spotube/extensions/duration.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/audio_player/querying_track_info.dart';
 import 'package:spotube/provider/audio_player/state.dart';
 import 'package:spotube/provider/blacklist_provider.dart';
+import 'package:spotube/provider/metadata_plugin/library/tracks.dart';
 import 'package:spotube/utils/platform.dart';
 
 final isBlacklistedProvider =
@@ -321,6 +324,21 @@ class TrackTile extends HookConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 const SizedBox(width: 8),
+                Consumer(
+                  builder: (context, ref, _) {
+                    final isLiked = ref.watch(isTrackLikedProvider(track.id));
+                    return HeartButton(
+                      isLiked: isLiked,
+                      size: ButtonSize.small,
+                      tooltip: isLiked
+                          ? context.l10n.remove_from_favorites
+                          : context.l10n.save_as_favorite,
+                      onPressed: () => ref
+                          .read(likedTrackIdsProvider.notifier)
+                          .toggle(track),
+                    );
+                  },
+                ),
                 Text(
                   Duration(milliseconds: track.durationMs)
                       .toHumanReadableString(padZero: false),

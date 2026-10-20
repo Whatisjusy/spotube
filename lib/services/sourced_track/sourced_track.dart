@@ -72,7 +72,8 @@ class SourcedTrack extends BasicSourcedTrack {
       }
 
       final manifest = await streamsWithFallback(
-        pluginStreams: () => audioSource.audioSource.streams(siblings.first),
+        pluginStreams: () => audioSource.audioSource
+            .streams(siblings.first, timeout: streamsTimeout),
         match: siblings.first,
         query: query,
         engine: ref.read(youtubeEngineProvider),
@@ -103,7 +104,8 @@ class SourcedTrack extends BasicSourcedTrack {
       jsonDecode(cachedSource.sourceInfo),
     );
     final manifest = await streamsWithFallback(
-      pluginStreams: () => audioSource.audioSource.streams(item),
+      pluginStreams: () =>
+          audioSource.audioSource.streams(item, timeout: streamsTimeout),
       match: item,
       query: query,
       engine: ref.read(youtubeEngineProvider),
@@ -284,6 +286,10 @@ class SourcedTrack extends BasicSourcedTrack {
   /// limit tripped on almost every lossless song and silently played Opus.
   static const streamsTimeout = Duration(seconds: 15);
 
+  /// Absolute cap on a `streams` call including any time spent queued
+  /// behind other plugin calls; only a stuck gate should ever reach it.
+  static const streamsHardLimit = Duration(seconds: 90);
+
   /// Skips the plugin for a minute after three timeouts in a row, so a dead
   /// plugin server costs one timeout per minute instead of one per song.
   static final audioSourceBreaker = AudioSourceBreaker();
@@ -366,7 +372,7 @@ class SourcedTrack extends BasicSourcedTrack {
     required SpotubeAudioSourceMatchObject match,
     required SpotubeFullTrackObject query,
     required YouTubeEngine engine,
-    Duration timeout = streamsTimeout,
+    Duration hardLimit = streamsHardLimit,
     AudioSourceBreaker? breaker,
   }) async {
     breaker ??= audioSourceBreaker;
@@ -378,7 +384,7 @@ class SourcedTrack extends BasicSourcedTrack {
       );
     } else {
       try {
-        final streams = await pluginStreams().timeout(timeout);
+        final streams = await pluginStreams().timeout(hardLimit);
         breaker.recordSuccess();
         AppLogger.log.d(
           "streams for \"${query.name}\" took ${watch.elapsedMilliseconds} ms",
@@ -386,8 +392,9 @@ class SourcedTrack extends BasicSourcedTrack {
         return streams;
       } on TimeoutException {
         AppLogger.log.w(
-          "Audio source plugin took over ${timeout.inSeconds}s to fetch "
-          "streams for \"${query.name}\" (${match.id}); using YouTube directly",
+          "Audio source plugin took over ${streamsTimeout.inSeconds}s to fetch "
+          "streams for \"${query.name}\" (${match.id}) "
+          "(${watch.elapsedMilliseconds} ms with queueing); using YouTube directly",
         );
         if (breaker.recordTimeout()) _logBreakerOpened(breaker);
       } catch (e, stack) {
@@ -444,8 +451,7 @@ class SourcedTrack extends BasicSourcedTrack {
     } else {
       try {
         searchResults = await audioSource.audioSource
-            .matches(query)
-            .timeout(matchesTimeout);
+            .matches(query, timeout: matchesTimeout);
         audioSourceBreaker.recordSuccess();
         AppLogger.log.d(
           "matches for \"${query.name}\" took ${watch.elapsedMilliseconds} ms",
@@ -453,7 +459,8 @@ class SourcedTrack extends BasicSourcedTrack {
       } on TimeoutException {
         AppLogger.log.w(
           "Audio source plugin took over ${matchesTimeout.inSeconds}s to "
-          "match \"${query.name}\"; searching YouTube directly",
+          "match \"${query.name}\" (${watch.elapsedMilliseconds} ms with "
+          "queueing); searching YouTube directly",
         );
         if (audioSourceBreaker.recordTimeout()) {
           _logBreakerOpened(audioSourceBreaker);
@@ -521,7 +528,8 @@ class SourcedTrack extends BasicSourcedTrack {
       ..insert(0, info);
 
     final manifest = await streamsWithFallback(
-      pluginStreams: () => audioSource.audioSource.streams(newSourceInfo),
+      pluginStreams: () => audioSource.audioSource
+          .streams(newSourceInfo, timeout: streamsTimeout),
       match: newSourceInfo,
       query: query,
       engine: ref.read(youtubeEngineProvider),
@@ -593,7 +601,8 @@ class SourcedTrack extends BasicSourcedTrack {
 
     if (validStreams.isEmpty) {
       validStreams = await streamsWithFallback(
-        pluginStreams: () => audioSource.audioSource.streams(info),
+        pluginStreams: () =>
+            audioSource.audioSource.streams(info, timeout: streamsTimeout),
         match: info,
         query: query,
         engine: ref.read(youtubeEngineProvider),

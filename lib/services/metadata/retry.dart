@@ -63,24 +63,42 @@ class _RequestGate {
 extension HTInstanceRetry on HTInstance {
   static const _maxAttempts = 4;
   static Future<void>? _refreshInFlight;
-  static final _gate = _RequestGate();
 
+  /// One gate per plugin (keyed by its interpreter), so a burst of audio
+  /// source lookups (prefetching several songs) does not hold up Spotify
+  /// metadata calls, and the other way round.
+  static final _gates = Expando<_RequestGate>("plugin request gates");
+  _RequestGate get _gate => _gates[interpreter] ??= _RequestGate();
+
+  /// [timeout], when given, limits the plugin's own execution time. It
+  /// starts only after the call has a slot in the gate, so time spent
+  /// queued behind other calls does not count. A timeout is thrown as
+  /// [TimeoutException] and is not retried.
   Future<dynamic> invokeWithRetry(
     String funcName, {
     List<dynamic> positionalArgs = const [],
     Map<String, dynamic> namedArgs = const {},
+    Duration? timeout,
   }) async {
     var attempt = 0;
     while (true) {
       attempt++;
+      final queued = Stopwatch()..start();
       await _gate.acquire();
+      if (queued.elapsedMilliseconds > 1000) {
+        AppLogger.log.d(
+          "Plugin call '$funcName' waited ${queued.elapsedMilliseconds} ms "
+          "for a slot",
+        );
+      }
       try {
         final result = invoke(
           funcName,
           positionalArgs: positionalArgs,
           namedArgs: namedArgs,
         );
-        return result is Future ? await result : result;
+        if (result is! Future) return result;
+        return await (timeout == null ? result : result.timeout(timeout));
       } catch (e) {
         final delay = _retryDelay(e, attempt);
         if (_statusCode(e) == 429 && delay != null) _gate.cooldown(delay);

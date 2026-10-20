@@ -180,7 +180,7 @@ void main() {
         match: monochrome,
         query: track("Follow Me", "Petit Biscuit", 280),
         engine: engine,
-        timeout: const Duration(milliseconds: 200),
+        hardLimit: const Duration(milliseconds: 200),
       );
       expect(streams.single.container, "flac");
       expect(engine.manifestsRequested, isEmpty);
@@ -197,7 +197,7 @@ void main() {
         match: monochrome,
         query: track("Follow Me", "Petit Biscuit", 280),
         engine: engine,
-        timeout: const Duration(milliseconds: 200),
+        hardLimit: const Duration(milliseconds: 200),
       );
       expect(engine.manifestsRequested, ["vAF0udoFJgA"]);
       expect(streams.single.container, "webm");
@@ -219,7 +219,7 @@ void main() {
         match: match,
         query: track("x", "y", 100),
         engine: engine,
-        timeout: const Duration(milliseconds: 200),
+        hardLimit: const Duration(milliseconds: 200),
       );
       expect(engine.manifestsRequested, ["ZbjFZxdCDU0"]);
     });
@@ -239,7 +239,7 @@ void main() {
         match: monochrome,
         query: track("Follow Me", "Petit Biscuit", 280),
         engine: engine,
-        timeout: const Duration(milliseconds: 200),
+        hardLimit: const Duration(milliseconds: 200),
         breaker: breaker,
       );
       expect(pluginCalled, isFalse);
@@ -255,7 +255,7 @@ void main() {
           match: monochrome,
           query: track("Follow Me", "Petit Biscuit", 280),
           engine: engine,
-          timeout: const Duration(milliseconds: 200),
+          hardLimit: const Duration(milliseconds: 200),
         ),
         throwsException,
       );

@@ -19,20 +19,30 @@ class MetadataPluginAudioSourceEndpoint {
         .toList();
   }
 
+  /// [timeout] caps the plugin's own work (queue time excluded).
   Future<List<SpotubeAudioSourceMatchObject>> matches(
-    SpotubeFullTrackObject track,
-  ) async {
-    final raw = await hetuMetadataAudioSource
-        .invokeWithRetry("matches", positionalArgs: [track.toJson()]) as List;
+    SpotubeFullTrackObject track, {
+    Duration? timeout,
+  }) async {
+    final raw = await hetuMetadataAudioSource.invokeWithRetry(
+      "matches",
+      positionalArgs: [track.toJson()],
+      timeout: timeout,
+    ) as List;
 
     return raw.map((e) => SpotubeAudioSourceMatchObject.fromJson(e)).toList();
   }
 
+  /// [timeout] caps the plugin's own work (queue time excluded).
   Future<List<SpotubeAudioSourceStreamObject>> streams(
-    SpotubeAudioSourceMatchObject match,
-  ) async {
-    final raw = await hetuMetadataAudioSource
-        .invokeWithRetry("streams", positionalArgs: [match.toJson()]) as List;
+    SpotubeAudioSourceMatchObject match, {
+    Duration? timeout,
+  }) async {
+    final raw = await hetuMetadataAudioSource.invokeWithRetry(
+      "streams",
+      positionalArgs: [match.toJson()],
+      timeout: timeout,
+    ) as List;
 
     return raw.map((e) => SpotubeAudioSourceStreamObject.fromJson(e)).toList();
   }

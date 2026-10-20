@@ -210,9 +210,39 @@ class AudioPlayerStreamListeners {
   final _downloadQueue = <SourcedTrack>[];
   bool _downloading = false;
 
-  /// Starts downloading straight away, one file at a time so the playing
-  /// track keeps most of the bandwidth.
+  /// How far into the playing track, and how far ahead its buffer must be,
+  /// before a background download may use the connection. Skipping around
+  /// restarts this clock, so downloads never compete with a song that is
+  /// still filling its buffer (heard as warbly audio in the first seconds).
+  static const _safePlayed = Duration(seconds: 30);
+  static const _safeBufferAhead = Duration(seconds: 20);
+
+  bool get _safeToDownload {
+    if (!audioPlayer.isPlaying) return true; // nothing is streaming
+    final duration = audioPlayer.duration;
+    if (duration == Duration.zero) return false; // still loading
+    final position = audioPlayer.position;
+    final buffered = audioPlayer.bufferedPosition;
+    final remaining = duration - position;
+    return position >= _safePlayed &&
+        (buffered - position >= _safeBufferAhead ||
+            buffered >= duration - const Duration(seconds: 1) ||
+            remaining < _safeBufferAhead);
+  }
+
+  /// Is [track] still one of the next [_audioPrefetchCount] in the queue?
+  bool _stillUpcoming(SourcedTrack track) {
+    final state = audioPlayerState;
+    final index = state.tracks.indexWhere((t) => t.id == track.query.id);
+    if (index == -1 || state.currentIndex == -1) return false;
+    final offset = index - state.currentIndex;
+    return offset > 0 && offset <= _audioPrefetchCount;
+  }
+
+  /// Queues a download, one file at a time, each started only once the
+  /// playing track is safely buffered and the file is still coming up.
   void _enqueueDownload(SourcedTrack track) {
+    if (_downloadQueue.any((t) => t.query.id == track.query.id)) return;
     _downloadQueue.add(track);
     if (_downloading) return;
     _downloading = true;
@@ -220,7 +250,14 @@ class AudioPlayerStreamListeners {
       try {
         final routes = ref.read(serverPlaybackRoutesProvider);
         while (_downloadQueue.isNotEmpty) {
-          await routes.prefetchToCache(_downloadQueue.removeAt(0));
+          while (!_safeToDownload) {
+            await Future.delayed(const Duration(seconds: 1));
+            _downloadQueue.removeWhere((t) => !_stillUpcoming(t));
+            if (_downloadQueue.isEmpty) return;
+          }
+          final next = _downloadQueue.removeAt(0);
+          if (!_stillUpcoming(next)) continue;
+          await routes.prefetchToCache(next);
         }
       } finally {
         _downloading = false;

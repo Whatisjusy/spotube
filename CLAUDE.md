@@ -81,6 +81,17 @@ make migrate                      # drift DB migrations after schema changes
   paused triggered the lookup 1 s later. A skip to a prefetched track logs `GET request for track` with no
   `Response for track` line after it, which means it was served from disk. Cache dir:
   `~/Library/Caches/oss.krtirtho.spotube/cached_tracks/`.
+- Download gating (2026-10-20): downloads wait until the playing track is 30 s in with 20 s buffered
+  ahead (`_safeToDownload`; unknown duration = not safe), drop entries no longer the next 2, and a live
+  `/stream` request cancels a prefetch of the same track (`CancelToken` in `_prefetching`). Reason:
+  downloads at song start caused warbly audio in the first 15 s when skipping. mpv warn/error lines
+  are now captured as `[mpv <prefix> <level>] ...` (`custom_player.dart`); check them first for glitches.
+- Cached files are served by `_serveCachedFile` in `routes/playback.dart` with real byte-range support
+  (206 + content-range, HEAD = headers only). Before 2026-10-20 the cache branch returned the whole
+  file from byte 0 for every request, so each engine seek on a cached track failed (`[mpv ffmpeg
+  error] Seek failed`, `flac: invalid sync code`, 10 GETs/s) and was heard as a burst of radio static
+  in the first seconds; the lookahead's prefetching made far more tracks play from cache, which is
+  why it "started today". Log line `Serving "<song>" from cache (bytes=...)` shows the served range.
 - Stress-test findings fixed 2026-10-20: (1) the restored queue could open before the stream server
   listened, mpv then failed all 51 entries ("Connection refused" x80) and ignored play/next/previous
   until a new queue was loaded; `_syncSavedState` now awaits `serverProvider` first. (2) mpv opens a

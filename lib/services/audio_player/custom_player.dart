@@ -22,6 +22,13 @@ class CustomPlayer extends Player {
   CustomPlayer({super.configuration})
       : _playerStateStream = StreamController.broadcast() {
     nativePlayer.setProperty("network-timeout", "120");
+    // Start audio only once a couple of seconds are cached, and keep more
+    // decoded audio queued at the device. Without this a skip onto a stream
+    // started playing on the first few packets and hit "Audio device
+    // underrun" seconds later, heard as a warbly radio-tuning glitch.
+    nativePlayer.setProperty("cache-pause-initial", "yes");
+    nativePlayer.setProperty("cache-pause-wait", "2");
+    nativePlayer.setProperty("audio-buffer", "0.5");
 
     _subscriptions = [
       stream.buffering.listen((event) {
@@ -45,6 +52,13 @@ class CustomPlayer extends Player {
       }),
       stream.error.listen((event) {
         AppLogger.reportError('[MediaKitError] \n$event', StackTrace.current);
+      }),
+      // mpv's own warnings (audio device underruns, cache stalls, decoder
+      // complaints) so a glitch heard mid-song can be matched to a cause.
+      stream.log.listen((log) {
+        const levels = {"fatal", "error", "warn"};
+        if (!levels.contains(log.level)) return;
+        AppLogger.log.w("[mpv ${log.prefix} ${log.level}] ${log.text}");
       }),
     ];
     PackageInfo.fromPlatform().then((packageInfo) {

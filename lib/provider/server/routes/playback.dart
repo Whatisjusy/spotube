@@ -46,8 +46,9 @@ class ServerPlaybackRoutes {
     unawaited(_sweepStaleTempFiles());
   }
 
-  /// Cache file paths with a background download in flight.
-  final _prefetching = <String>{};
+  /// Cache file paths with a background download in flight, and the token
+  /// that stops each one.
+  final _prefetching = <String, CancelToken>{};
   bool _sweptStaleTempFiles = false;
 
   /// Removes ".part" / ".prefetch" files left by a previous run that was
@@ -81,7 +82,11 @@ class ServerPlaybackRoutes {
 
     await _sweepStaleTempFiles();
     final cacheFile = File(await _getTrackCacheFilePath(track));
-    if (await cacheFile.exists() || !_prefetching.add(cacheFile.path)) return;
+    if (await cacheFile.exists() || _prefetching.containsKey(cacheFile.path)) {
+      return;
+    }
+    final cancel = CancelToken();
+    _prefetching[cacheFile.path] = cancel;
 
     // Separate temp file: the live stream path writes its own ".part", and
     // both may run at once if the listener skips ahead mid-download.
@@ -89,6 +94,7 @@ class ServerPlaybackRoutes {
     try {
       final res = await dio.get<ResponseBody>(
         url,
+        cancelToken: cancel,
         options: Options(
           headers: {
             "user-agent": _randomUserAgent,
@@ -121,7 +127,11 @@ class ServerPlaybackRoutes {
       );
       await _tagCacheFile(track, cacheFile, length);
     } catch (e, stack) {
-      AppLogger.reportError(e, stack);
+      if (cancel.isCancelled) {
+        AppLogger.log.i('Prefetch of "${track.query.name}" cancelled');
+      } else {
+        AppLogger.reportError(e, stack);
+      }
       if (await tempFile.exists()) await tempFile.delete();
     } finally {
       _prefetching.remove(cacheFile.path);
@@ -162,6 +172,67 @@ class ServerPlaybackRoutes {
     );
   }
 
+  /// The complete cached file for [track], or null when there is none or
+  /// caching is off.
+  Future<File?> _cachedFileFor(SourcedTrack track) async {
+    if (!userPreferences.cacheMusic) return null;
+    final file = File(await _getTrackCacheFilePath(track));
+    return await file.exists() ? file : null;
+  }
+
+  /// Serves a cached file the way a real HTTP server would: byte ranges are
+  /// honoured with 206 responses. The engine seeks by asking for ranges; if
+  /// it gets the whole file from byte 0 instead, the decoder reads misaligned
+  /// data ("flac: invalid sync code") and the listener hears a burst of
+  /// static. HEAD requests get the headers only.
+  Future<Response> _serveCachedFile(
+    Request request,
+    File file,
+    SourcedTrack track,
+  ) async {
+    final length = await file.length();
+    final baseHeaders = {
+      "content-type": "audio/${track.activeContainer}",
+      "accept-ranges": "bytes",
+    };
+    final isHead = request.method == "HEAD";
+
+    RangeHeader? range;
+    final rangeValue = request.headers["range"];
+    if (rangeValue != null && rangeValue.isNotEmpty) {
+      try {
+        range = RangeHeader.parse(rangeValue);
+      } on FormatException {
+        range = null;
+      }
+    }
+
+    if (range == null) {
+      return Response.ok(
+        isHead ? null : file.openRead(),
+        headers: {...baseHeaders, "content-length": "$length"},
+      );
+    }
+
+    final start = range.start;
+    final end = (range.end ?? length - 1).clamp(0, length - 1);
+    if (start < 0 || start > end || start >= length) {
+      return Response(
+        416,
+        headers: {...baseHeaders, "content-range": "bytes */$length"},
+      );
+    }
+    return Response(
+      206,
+      body: isHead ? null : file.openRead(start, end + 1),
+      headers: {
+        ...baseHeaders,
+        "content-length": "${end - start + 1}",
+        "content-range": "bytes $start-$end/$length",
+      },
+    );
+  }
+
   Future<SourcedTrack?> _getSourcedTrack(
     Request request,
     String trackId,
@@ -195,23 +266,6 @@ class ServerPlaybackRoutes {
       "Headers: ${request.headers}",
     );
 
-    final trackCacheFile = File(await _getTrackCacheFilePath(track));
-
-    if (await trackCacheFile.exists() && userPreferences.cacheMusic) {
-      final fileLength = await trackCacheFile.length();
-
-      return dio_lib.Response(
-        statusCode: 200,
-        headers: Headers.fromMap({
-          "content-type": ["audio/${track.activeContainer}"],
-          "content-length": ["$fileLength"],
-          "accept-ranges": ["bytes"],
-          "content-range": ["bytes 0-$fileLength/$fileLength"],
-        }),
-        requestOptions: RequestOptions(path: request.requestedUri.toString()),
-      );
-    }
-
     String url = track.url ??
         await ref
             .read(sourcedTrackProvider(track.query).notifier)
@@ -244,26 +298,6 @@ class ServerPlaybackRoutes {
     );
 
     final trackCacheFile = File(await _getTrackCacheFilePath(track));
-
-    if (await trackCacheFile.exists() && userPreferences.cacheMusic) {
-      final bytes = await trackCacheFile.readAsBytes();
-      final cachedFileLength = bytes.length;
-
-      return dio_lib.Response<Uint8List>(
-        statusCode: 200,
-        headers: Headers.fromMap({
-          "content-type": ["audio/${track.activeContainer}"],
-          "content-length": ["${cachedFileLength - 1}"],
-          "accept-ranges": ["bytes"],
-          "content-range": [
-            "bytes 0-${cachedFileLength - 1}/$cachedFileLength"
-          ],
-          "connection": ["close"],
-        }),
-        requestOptions: RequestOptions(path: request.requestedUri.toString()),
-        data: bytes,
-      );
-    }
 
     String url = track.url ??
         await ref
@@ -327,6 +361,10 @@ class ServerPlaybackRoutes {
       return res;
     }
 
+    // The listener skipped onto a track still being prefetched: stop that
+    // download so the live stream has the whole connection.
+    _prefetching[trackCacheFile.path]?.cancel("now streaming live");
+
     await _sweepStaleTempFiles();
     final contentRange = res.headers.value("content-range") != null
         ? ContentRangeHeader.parse(res.headers.value("content-range") ?? "")
@@ -340,7 +378,7 @@ class ServerPlaybackRoutes {
     // either, and a background prefetch already in flight will produce it.
     if (contentRange.start != 0 ||
         await trackPartialCacheFile.exists() ||
-        _prefetching.contains(trackCacheFile.path)) {
+        _prefetching.containsKey(trackCacheFile.path)) {
       return res;
     }
     await trackPartialCacheFile.create(recursive: true);
@@ -392,6 +430,11 @@ class ServerPlaybackRoutes {
         return Response.notFound("Track not found in the current queue");
       }
 
+      final cached = await _cachedFileFor(sourcedTrack);
+      if (cached != null) {
+        return _serveCachedFile(request, cached, sourcedTrack);
+      }
+
       final res = await streamTrackInformation(
         request,
         sourcedTrack,
@@ -419,6 +462,15 @@ class ServerPlaybackRoutes {
       // The engine only fetches a track when it starts playing it, so this is
       // the ground truth for "what's playing" even if its index event is late.
       ref.read(audioPlayerProvider.notifier).markTrackAsActive(trackId);
+
+      final cached = await _cachedFileFor(sourcedTrack);
+      if (cached != null) {
+        AppLogger.log.i(
+          "Serving \"${sourcedTrack.query.name}\" from cache "
+          "(${request.headers["range"] ?? "whole file"})",
+        );
+        return _serveCachedFile(request, cached, sourcedTrack);
+      }
 
       final res = await streamTrack(
         request,

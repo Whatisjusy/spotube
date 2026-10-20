@@ -72,7 +72,12 @@ make migrate                      # drift DB migrations after schema changes
 - Tapping a track in any list = "play from here": queue is that track + the next 50 loaded ones
   (`kQueueWindow` in `use_track_tile_play_callback.dart`). It always rebuilds the queue; it never
   jumps inside an existing queue. The header Play/Shuffle buttons still load the whole collection.
-- Next track's audio source is resolved 5 s into the current track (was 80%).
+- Lookahead: 5 s into a track, `subscribeToPosition` in `audio_player_streams.dart` looks up the audio
+  source for queue offsets +1, +2, +3, -1 (`_lookaheadOffsets`), and for +1 and +2 also downloads the
+  whole file into the music cache (`prefetchToCache` in `routes/playback.dart`, only when "cache music"
+  is on, temp file `*.prefetch`). A skip to a prefetched track logs `GET request for track` with no
+  `Response for track` line after it, which means it was served from disk. Cache dir:
+  `~/Library/Caches/oss.krtirtho.spotube/cached_tracks/`.
 - `markTrackAsActive` in `audio_player.dart` is called from the stream server on every
   `/stream/<id>` GET, so the active index follows what the engine fetches, not only mpv's
   playlist event. Now Playing / Discord follow `activeTrack` via `ref.listen`.

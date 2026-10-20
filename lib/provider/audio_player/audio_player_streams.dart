@@ -9,6 +9,7 @@ import 'package:spotube/provider/discord_provider.dart';
 import 'package:spotube/provider/history/history.dart';
 import 'package:spotube/provider/metadata_plugin/core/scrobble.dart';
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
+import 'package:spotube/provider/server/routes/playback.dart';
 import 'package:spotube/provider/server/sourced_track_provider.dart';
 import 'package:spotube/provider/skip_segments/skip_segments.dart';
 import 'package:spotube/provider/scrobbler/scrobbler.dart';
@@ -138,36 +139,55 @@ class AudioPlayerStreamListeners {
     });
   }
 
+  /// Queue positions, relative to the playing track, whose audio source is
+  /// looked up ahead of time. Order matters: the most likely switch first.
+  static const _lookaheadOffsets = [1, 2, 3, -1];
+
+  /// How many of the upcoming tracks also get their audio downloaded into
+  /// the music cache, so switching to them starts straight from disk.
+  static const _audioPrefetchCount = 2;
+
+  /// Tracks already prepared this session (looked up once, success or not).
+  final _preparedTrackIds = <String>{};
+  bool _preparing = false;
+
   StreamSubscription subscribeToPosition() {
-    String lastTrack = ""; // used to prevent multiple calls to the same track
     return audioPlayer.positionStream.listen((event) async {
+      // A few seconds into a track, prepare the ones around it so skipping in
+      // either direction doesn't stall on a source lookup.
+      if (event < const Duration(seconds: 5) || _preparing) return;
+      final index = audioPlayerState.currentIndex;
+      if (index == -1) return;
+
+      _preparing = true;
       try {
-        // Resolve the next track's audio source early (a few seconds into the
-        // current one) so skipping ahead doesn't stall.
-        if (event < const Duration(seconds: 5) ||
-            audioPlayerState.currentIndex == -1 ||
-            audioPlayerState.currentIndex ==
-                audioPlayerState.tracks.length - 1) {
-          return;
-        }
-        final nextTrack = audioPlayerState.tracks
-            .elementAtOrNull(audioPlayerState.currentIndex + 1);
+        for (final offset in _lookaheadOffsets) {
+          // The listener moved on; the next tick starts over from there.
+          if (audioPlayerState.currentIndex != index) break;
 
-        if (nextTrack == null ||
-            lastTrack == nextTrack.id ||
-            nextTrack is SpotubeLocalTrackObject) {
-          return;
-        }
+          final tracks = audioPlayerState.tracks;
+          final i = index + offset;
+          if (i < 0 || i >= tracks.length) continue;
+          final track = tracks[i];
+          if (track is! SpotubeFullTrackObject ||
+              _preparedTrackIds.contains(track.id)) {
+            continue;
+          }
 
-        try {
-          await ref.read(
-            sourcedTrackProvider(nextTrack as SpotubeFullTrackObject).future,
-          );
-        } finally {
-          lastTrack = nextTrack.id;
+          _preparedTrackIds.add(track.id);
+          try {
+            final sourced = await ref.read(sourcedTrackProvider(track).future);
+            if (offset > 0 && offset <= _audioPrefetchCount) {
+              unawaited(
+                ref.read(serverPlaybackRoutesProvider).prefetchToCache(sourced),
+              );
+            }
+          } catch (e, stack) {
+            AppLogger.reportError(e, stack);
+          }
         }
-      } catch (e, stack) {
-        AppLogger.reportError(e, stack);
+      } finally {
+        _preparing = false;
       }
     });
   }

@@ -44,6 +44,90 @@ class ServerPlaybackRoutes {
 
   ServerPlaybackRoutes(this.ref) : dio = Dio();
 
+  /// Cache file paths with a background download in flight.
+  final _prefetching = <String>{};
+
+  /// Downloads [track]'s audio into the music cache ahead of time so the
+  /// engine can start it straight from disk. Does nothing when caching is
+  /// off, the file is already cached, or a download is already running.
+  Future<void> prefetchToCache(SourcedTrack track) async {
+    if (!userPreferences.cacheMusic) return;
+    final url = track.url;
+    if (url == null) return;
+
+    final cacheFile = File(await _getTrackCacheFilePath(track));
+    if (await cacheFile.exists() || !_prefetching.add(cacheFile.path)) return;
+
+    // Separate temp file: the live stream path writes its own ".part", and
+    // both may run at once if the listener skips ahead mid-download.
+    final tempFile = File("${cacheFile.path}.prefetch");
+    try {
+      final res = await dio.get<ResponseBody>(
+        url,
+        options: Options(
+          headers: {
+            "user-agent": _randomUserAgent,
+            "host": Uri.parse(url).host,
+          },
+          responseType: ResponseType.stream,
+          validateStatus: (status) => status! < 400,
+        ),
+      );
+      // HLS playlists can't be cached as one file.
+      if (res.headers.value("content-type") ==
+          "application/vnd.apple.mpegurl") {
+        return;
+      }
+      final total = int.tryParse(res.headers.value("content-length") ?? "");
+
+      await tempFile.create(recursive: true);
+      final sink = tempFile.openWrite();
+      await sink.addStream(res.data!.stream);
+      await sink.close();
+
+      final length = await tempFile.length();
+      if (total != null && length != total) {
+        await tempFile.delete();
+        return;
+      }
+      await tempFile.rename(cacheFile.path);
+      AppLogger.log.i(
+        'Prefetched "${track.query.name}" to cache (${length ~/ 1024} KB)',
+      );
+      await _tagCacheFile(track, cacheFile, length);
+    } catch (e, stack) {
+      AppLogger.reportError(e, stack);
+      if (await tempFile.exists()) await tempFile.delete();
+    } finally {
+      _prefetching.remove(cacheFile.path);
+    }
+  }
+
+  Future<void> _tagCacheFile(
+    SourcedTrack track,
+    File cacheFile,
+    int fileLength,
+  ) async {
+    if (track.activeFileExtension == "weba") return;
+
+    final imageBytes = await ServiceUtils.downloadImage(
+      track.query.album.images.asUrlString(
+        placeholder: ImagePlaceholder.albumArt,
+        index: 1,
+      ),
+    );
+
+    await MetadataGod.writeMetadata(
+      file: cacheFile.path,
+      metadata: track.query.toMetadata(
+        imageBytes: imageBytes,
+        fileLength: fileLength,
+      ),
+    ).catchError((e, stackTrace) {
+      AppLogger.reportError(e, stackTrace);
+    });
+  }
+
   Future<String> _getTrackCacheFilePath(SourcedTrack track) async {
     return join(
       await UserPreferencesNotifier.getMusicCacheDir(),
@@ -246,25 +330,7 @@ class ServerPlaybackRoutes {
         if (fileLength != contentRange.total) return;
 
         await trackPartialCacheFile.rename(trackCacheFile.path);
-
-        if (track.activeFileExtension == "weba") return;
-
-        final imageBytes = await ServiceUtils.downloadImage(
-          track.query.album.images.asUrlString(
-            placeholder: ImagePlaceholder.albumArt,
-            index: 1,
-          ),
-        );
-
-        await MetadataGod.writeMetadata(
-          file: trackCacheFile.path,
-          metadata: track.query.toMetadata(
-            imageBytes: imageBytes,
-            fileLength: fileLength,
-          ),
-        ).catchError((e, stackTrace) {
-          AppLogger.reportError(e, stackTrace);
-        });
+        await _tagCacheFile(track, trackCacheFile, fileLength);
       },
       cancelOnError: true,
     );

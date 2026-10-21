@@ -31,6 +31,8 @@ class AlbumPage extends HookConsumerWidget {
         ref.watch(metadataPluginSavedAlbumsProvider.notifier);
     final isSavedAlbum =
         ref.watch(metadataPluginIsSavedAlbumProvider(album.id));
+    // Some albums arrive with no artists; .first would crash the whole page.
+    final artistName = album.artists.firstOrNull?.name;
 
     return material.RefreshIndicator.adaptive(
       onRefresh: () async {
@@ -45,8 +47,11 @@ class AlbumPage extends HookConsumerWidget {
             placeholder: ImagePlaceholder.albumArt,
           ),
           title: album.name,
-          description:
-              "${context.l10n.released} • ${album.releaseDate} • ${album.artists.first.name}",
+          description: [
+            context.l10n.released,
+            album.releaseDate,
+            if (artistName != null) artistName,
+          ].join(" • "),
           tracks: tracks.asData?.value.items ?? [],
           error: tracks.error,
           pagination: PaginationProps(
@@ -65,7 +70,7 @@ class AlbumPage extends HookConsumerWidget {
           routePath: "/album/${album.id}",
           shareUrl: album.externalUri,
           isLiked: isSavedAlbum.asData?.value ?? false,
-          owner: album.artists.first.name,
+          owner: artistName,
           onHeart: isSavedAlbum.asData?.value == null
               ? null
               : () async {

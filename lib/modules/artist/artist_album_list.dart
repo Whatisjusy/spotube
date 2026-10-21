@@ -4,7 +4,30 @@ import 'package:spotube/components/horizontal_playbutton_card_view/horizontal_pl
 import 'package:spotube/extensions/context.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/metadata_plugin/artist/albums.dart';
+import 'package:spotube/provider/metadata_plugin/artist/artist.dart';
 import 'package:spotube/provider/metadata_plugin/utils/common.dart';
+
+/// The Spotify plugin's artist album list leaves out the albums' artists, so
+/// the album page had no artist to show. Fill in the artist whose page this is.
+List<SpotubeSimpleAlbumObject> albumsWithArtist(
+  List<SpotubeSimpleAlbumObject> albums,
+  SpotubeFullArtistObject? artist,
+) {
+  if (artist == null) return albums;
+  return albums.map((album) {
+    if (album.artists.isNotEmpty) return album;
+    return album.copyWith(
+      artists: [
+        SpotubeSimpleArtistObject(
+          id: artist.id,
+          name: artist.name,
+          externalUri: artist.externalUri,
+          images: artist.images,
+        ),
+      ],
+    );
+  }).toList();
+}
 
 class ArtistAlbumList extends HookConsumerWidget {
   final String artistId;
@@ -20,7 +43,13 @@ class ArtistAlbumList extends HookConsumerWidget {
     final albumsQueryNotifier =
         ref.watch(metadataPluginArtistAlbumsProvider(artistId).notifier);
 
-    final albums = albumsQuery.asData?.value.items ?? [];
+    final artist =
+        ref.watch(metadataPluginArtistProvider(artistId)).asData?.value;
+
+    final albums = albumsWithArtist(
+      albumsQuery.asData?.value.items ?? [],
+      artist,
+    );
 
     final theme = Theme.of(context);
 

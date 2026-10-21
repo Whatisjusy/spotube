@@ -129,6 +129,9 @@ make migrate                      # drift DB migrations after schema changes
   in ANY of your playlists, so it is no longer used. `likedTrackIdsProvider` (`library/tracks.dart`) loads all
   Liked Songs ids once per launch (50/page, 0.7 s apart; 3,650 took ~90 s, log `Liked Songs loaded: N tracks`)
   and answers the menu, player heart and the new heart button in every track row (`track_tile.dart`).
+- Artist page shows **"Liked songs"** by that artist under the name (owner asked, 2026-10-21):
+  `pages/artist/section/liked_tracks.dart`, 5 rows then "Show all", tap = play from here. It filters
+  `likedTrackIdsProvider`'s `tracks` (no extra Spotify calls); test `artist_liked_tracks_test.dart`.
 - Local change: the Getting Started welcome screen never shows on launch (guard removed in `routes.dart`).
 - Resume where you left off: `position_ms` (schema v11) is saved while playing and restored once the song loads (log `Resumed last session`). Detail: `docs/troubleshooting.md`.
 - **Look: Everforest, copied from Feishin** (owner's pick, 2026-10-19): `lib/themes/everforest.dart`, player bar docked on desktop, Settings accent picker ignored on purpose. Detail: `docs/troubleshooting.md`.

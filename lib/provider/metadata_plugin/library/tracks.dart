@@ -101,7 +101,13 @@ final metadataPluginSavedTracksProvider = AutoDisposeAsyncNotifierProvider<
 /// the only correct answer is the Liked Songs list itself. It is loaded once
 /// per launch (50 per page, paced so Spotify does not rate-limit us) and kept
 /// up to date by [MetadataPluginSavedTracksNotifier.addFavorite]/[removeFavorite].
-typedef LikedTrackIds = ({Set<String> ids, bool complete});
+/// [tracks] keeps the songs themselves, newest first, for the artist page's
+/// "Liked songs" section.
+typedef LikedTrackIds = ({
+  Set<String> ids,
+  List<SpotubeFullTrackObject> tracks,
+  bool complete,
+});
 
 class LikedTrackIdsNotifier extends Notifier<LikedTrackIds> {
   static const _pageSize = 50;
@@ -116,7 +122,11 @@ class LikedTrackIdsNotifier extends Notifier<LikedTrackIds> {
         ref.watch(metadataPluginAuthenticatedProvider).asData?.value ?? false;
     final generation = ++_generation;
     if (authenticated) _load(generation);
-    return (ids: <String>{}, complete: false);
+    return (
+      ids: <String>{},
+      tracks: <SpotubeFullTrackObject>[],
+      complete: false
+    );
   }
 
   Future<void> _load(int generation) async {
@@ -128,8 +138,10 @@ class LikedTrackIdsNotifier extends Notifier<LikedTrackIds> {
         final page =
             await plugin.user.savedTracks(offset: offset, limit: _pageSize);
         if (generation != _generation) return;
+        final fresh = page.items.where((t) => !state.ids.contains(t.id));
         state = (
           ids: {...state.ids, ...page.items.map((t) => t.id)},
+          tracks: [...state.tracks, ...fresh],
           complete: !page.hasMore,
         );
         if (!page.hasMore) {
@@ -152,7 +164,15 @@ class LikedTrackIdsNotifier extends Notifier<LikedTrackIds> {
     for (final track in tracks) {
       liked ? ids.add(track.id) : ids.remove(track.id);
     }
-    state = (ids: ids, complete: state.complete);
+    final changed = tracks.map((t) => t.id).toSet();
+    state = (
+      ids: ids,
+      tracks: [
+        if (liked) ...tracks.whereType<SpotubeFullTrackObject>(),
+        ...state.tracks.where((t) => !changed.contains(t.id)),
+      ],
+      complete: state.complete,
+    );
   }
 
   /// The heart in track rows: flips straight away, undoes it if Spotify
@@ -178,6 +198,20 @@ class LikedTrackIdsNotifier extends Notifier<LikedTrackIds> {
 final likedTrackIdsProvider =
     NotifierProvider<LikedTrackIdsNotifier, LikedTrackIds>(
   LikedTrackIdsNotifier.new,
+);
+
+/// Liked songs by one artist, newest first. Grows while Liked Songs loads.
+final artistLikedTracksProvider = Provider.autoDispose
+    .family<({List<SpotubeFullTrackObject> tracks, bool complete}), String>(
+  (ref, artistId) {
+    final liked = ref.watch(likedTrackIdsProvider);
+    return (
+      tracks: liked.tracks
+          .where((t) => t.artists.any((a) => a.id == artistId))
+          .toList(),
+      complete: liked.complete,
+    );
+  },
 );
 
 /// Cheap per-row check for the heart in track lists. False until known.

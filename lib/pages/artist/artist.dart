@@ -10,6 +10,7 @@ import 'package:spotube/modules/artist/artist_album_list.dart';
 
 import 'package:spotube/pages/artist/section/footer.dart';
 import 'package:spotube/pages/artist/section/header.dart';
+import 'package:spotube/pages/artist/section/liked_tracks.dart';
 import 'package:spotube/pages/artist/section/related_artists.dart';
 import 'package:spotube/pages/artist/section/top_tracks.dart';
 import 'package:spotube/provider/metadata_plugin/artist/albums.dart';
@@ -78,6 +79,7 @@ class ArtistPage extends HookConsumerWidget {
                     ),
                   ),
                   const SliverGap(20),
+                  ArtistPageLikedTracks(artistId: artistId),
                   ArtistPageTopTracks(artistId: artistId),
                   const SliverGap(20),
                   SliverToBoxAdapter(child: ArtistAlbumList(artistId)),

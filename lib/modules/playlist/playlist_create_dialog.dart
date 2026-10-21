@@ -20,6 +20,12 @@ import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/metadata_plugin/library/playlists.dart';
 import 'package:spotube/provider/metadata_plugin/playlist/playlist.dart';
 
+// Local change: on a phone, tapping outside a text box did not close the
+// keyboard, and the description box (several lines, so no Done key) kept it
+// over the Update button (iPhone, 2026-10-21).
+void _hideKeyboard(PointerDownEvent _) =>
+    FocusManager.instance.primaryFocus?.unfocus();
+
 class PlaylistCreateDialog extends HookConsumerWidget {
   /// Track ids to add to the playlist
   final List<String> trackIds;
@@ -263,6 +269,7 @@ class PlaylistCreateDialog extends HookConsumerWidget {
                 label: Text(context.l10n.playlist_name),
                 placeholder: Text(context.l10n.name_of_playlist),
                 validator: FormBuilderValidators.required(),
+                onTapOutside: _hideKeyboard,
               ),
               const Gap(20),
               TextFormBuilderField(
@@ -272,6 +279,7 @@ class PlaylistCreateDialog extends HookConsumerWidget {
                 placeholder: Text(context.l10n.description),
                 keyboardType: TextInputType.multiline,
                 maxLines: 5,
+                onTapOutside: _hideKeyboard,
               ),
               const Gap(20),
               CheckboxFormBuilderField(

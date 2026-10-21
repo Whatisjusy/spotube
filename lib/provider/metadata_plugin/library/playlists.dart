@@ -60,7 +60,12 @@ class MetadataPluginSavedPlaylistsNotifier
 
     try {
       await (await metadataPlugin).playlist.save(playlist.id);
-      ref.invalidate(metadataPluginIsSavedPlaylistProvider(playlist.id));
+      // Local change: through the container. The saved check now watches
+      // this list, and ref.invalidate's debug check calls that circular, so
+      // in debug builds a follow that worked was undone on screen (Mac,
+      // 2026-10-21). Release builds skip that check.
+      ref.container
+          .invalidate(metadataPluginIsSavedPlaylistProvider(playlist.id));
     } catch (e) {
       state = AsyncData(oldState!);
       rethrow;
@@ -79,7 +84,8 @@ class MetadataPluginSavedPlaylistsNotifier
 
     try {
       await (await metadataPlugin).playlist.unsave(playlist.id);
-      ref.invalidate(metadataPluginIsSavedPlaylistProvider(playlist.id));
+      ref.container
+          .invalidate(metadataPluginIsSavedPlaylistProvider(playlist.id));
     } catch (e) {
       state = AsyncData(oldState!);
       rethrow;
@@ -93,7 +99,8 @@ class MetadataPluginSavedPlaylistsNotifier
       state = const AsyncLoading();
       await (await metadataPlugin).playlist.deletePlaylist(playlistId);
       ref.invalidateSelf();
-      ref.invalidate(metadataPluginIsSavedPlaylistProvider(playlistId));
+      ref.container
+          .invalidate(metadataPluginIsSavedPlaylistProvider(playlistId));
       ref.invalidate(metadataPluginPlaylistTracksProvider(playlistId));
     } catch (e) {
       state = oldState;

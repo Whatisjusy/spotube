@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
 import 'package:hetu_script/binding.dart';
 import 'package:hetu_script/values.dart';
 import 'package:hetu_std/http/http.dart' as hetu_http;
@@ -62,5 +65,32 @@ class SpotifyGql {
       );
     }) as hetu_http.HttpResponse;
     return res.data;
+  }
+
+  /// Posts [body] as JSON to Spotify's playlist server
+  /// (`spclient.wg.spotify.com`), with the same login, gate and retries as
+  /// [query]. Creating a playlist and changing its name, description or
+  /// public flag go there, not to the query server.
+  Future<dynamic> post(
+    String funcName,
+    String path, {
+    required Map<String, dynamic> body,
+  }) async {
+    final hetu_http.HttpResponse res;
+    try {
+      res = await _endpoint.runWithRetryFor(funcName, () {
+        final client = _client(_endpoint);
+        if (client == null) throw StateError("Spotify plugin client is gone");
+        // A full URL replaces the client's query-server base URL.
+        return client.post("https://spclient.wg.spotify.com$path", data: body);
+      }) as hetu_http.HttpResponse;
+    } on DioException catch (e) {
+      // The reply body says why a change was refused; Dio's message does not.
+      final reply = e.response;
+      if (reply == null) rethrow;
+      throw StateError("$path refused: ${reply.statusCode} ${reply.data}");
+    }
+    final data = res.data;
+    return data is String && data.isNotEmpty ? jsonDecode(data) : data;
   }
 }

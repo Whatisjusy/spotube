@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:spotube/models/metadata/metadata.dart';
 import 'package:spotube/provider/metadata_plugin/library/playlists.dart';
@@ -71,13 +72,34 @@ class MetadataPluginPlaylistNotifier
           collaborative == null) {
         throw Exception('No modifications provided.');
       }
+      final userId = public == null
+          ? null
+          : await ref
+              .read(metadataPluginUserProvider.selectAsync((data) => data?.id));
       await (await metadataPlugin).playlist.update(
             arg,
             name: name,
             description: description,
             public: public,
             collaborative: collaborative,
+            userId: userId,
           );
+      // Local change: the playlist page shows the Library list's copy of the
+      // name and description, so an edit looked lost until a reload.
+      final entry = ref
+          .read(metadataPluginSavedPlaylistsProvider)
+          .asData
+          ?.value
+          .items
+          .firstWhereOrNull((p) => p.id == arg);
+      if (entry != null) {
+        ref.read(metadataPluginSavedPlaylistsProvider.notifier).updatePlaylist(
+              entry.copyWith(
+                name: name ?? entry.name,
+                description: description ?? entry.description,
+              ),
+            );
+      }
       ref.invalidateSelf();
     } on Exception catch (e) {
       onError?.call(e);

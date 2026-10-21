@@ -108,11 +108,17 @@ class PlaylistCreateDialog extends HookConsumerWidget {
         );
 
         if (isUpdatingPlaylist) {
+          // Local change: send only the switches that were changed. The
+          // Spotify plugin reports every playlist as public, so sending the
+          // form as it is made a private playlist public on any edit.
+          final current = playlist.asData?.value;
           await playlistNotifier.modify(
             name: payload.playlistName,
             description: payload.description,
-            public: payload.public,
-            collaborative: payload.collaborative,
+            public: payload.public == current?.public ? null : payload.public,
+            collaborative: payload.collaborative == current?.collaborative
+                ? null
+                : payload.collaborative,
             onError: onError,
           );
         } else {
@@ -125,7 +131,9 @@ class PlaylistCreateDialog extends HookConsumerWidget {
           );
         }
 
-        if (trackIds.isNotEmpty) {
+        // Local change: only for a new playlist. The edit button passes the
+        // playlist's own songs, so an edit added them all a second time.
+        if (!isUpdatingPlaylist && trackIds.isNotEmpty) {
           await playlistNotifier.addTracks(trackIds, onError);
         }
       } finally {

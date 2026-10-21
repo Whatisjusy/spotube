@@ -101,10 +101,18 @@ Future<dynamic> runWithRetry(
       );
     }
     Duration? retryIn;
+    final running = Stopwatch()..start();
     try {
       final result = call();
       if (result is! Future) return result;
-      return await (timeout == null ? result : result.timeout(timeout));
+      final value =
+          await (timeout == null ? result : result.timeout(timeout));
+      if (running.elapsedMilliseconds > 2000) {
+        AppLogger.log.i(
+          "Plugin call '$funcName' took ${running.elapsedMilliseconds} ms",
+        );
+      }
+      return value;
     } catch (e) {
       final delay = _retryDelay(e, attempt);
       if (_statusCode(e) == 429 && delay != null) gate.cooldown(delay, funcName);
@@ -190,6 +198,24 @@ extension HTInstanceRetry on HTInstance {
         positionalArgs: positionalArgs,
         namedArgs: namedArgs,
       ),
+      timeout: timeout,
+      refreshCredentials: _refreshCredentials,
+      maxAttempts: _maxAttempts,
+    );
+  }
+
+  /// Runs [call], a request made for this plugin from the app side (for
+  /// example straight through the plugin's HTTP client), through the same
+  /// gate and retries as [invokeWithRetry].
+  Future<dynamic> runWithRetryFor(
+    String funcName,
+    FutureOr<dynamic> Function() call, {
+    Duration? timeout,
+  }) {
+    return runWithRetry(
+      _gate,
+      funcName,
+      call,
       timeout: timeout,
       refreshCredentials: _refreshCredentials,
       maxAttempts: _maxAttempts,

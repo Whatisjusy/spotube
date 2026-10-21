@@ -7,10 +7,20 @@ import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
 class MetadataPluginAuthenticatedNotifier extends AsyncNotifier<bool> {
   @override
   FutureOr<bool> build() async {
-    final defaultPluginConfig = ref.watch(metadataPluginsProvider);
-    if (defaultPluginConfig.asData?.value.defaultMetadataPluginConfig?.abilities
-            .contains(PluginAbilities.authentication) !=
-        true) {
+    // Local change: watch only whether the plugin can log in. Watching the
+    // whole plugin list rebuilt this on every change to it (3 times at each
+    // launch on the Mac, 2026-10-21), and every rebuild reloaded each page
+    // that watches login state: home sections, new releases, profile,
+    // library lists. They queued 2-4 s for the plugin's 3 slots at launch.
+    final canLogIn = await ref.watch(
+      metadataPluginsProvider.selectAsync(
+        (data) =>
+            data.defaultMetadataPluginConfig?.abilities
+                .contains(PluginAbilities.authentication) ==
+            true,
+      ),
+    );
+    if (!canLogIn) {
       return false;
     }
 
@@ -20,7 +30,10 @@ class MetadataPluginAuthenticatedNotifier extends AsyncNotifier<bool> {
     }
 
     final sub = defaultPlugin.auth.authStateStream.listen((event) {
-      state = AsyncData(defaultPlugin.auth.isAuthenticated());
+      // Local change: a token refresh fires this too. Only a real log in or
+      // out should reach the pages above.
+      final authenticated = defaultPlugin.auth.isAuthenticated();
+      if (state.valueOrNull != authenticated) state = AsyncData(authenticated);
     });
 
     ref.onDispose(() {

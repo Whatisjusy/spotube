@@ -17,7 +17,9 @@ class MetadataPluginAlbumReleasesNotifier
 
   @override
   build() async {
-    ref.watch(metadataPluginAuthenticatedProvider);
+    // Local change: wait for the login state instead of building once
+    // before it is known and again after.
+    await ref.watch(metadataPluginAuthenticatedProvider.future);
     return await fetch(0, 20);
   }
 }

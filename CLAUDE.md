@@ -182,6 +182,24 @@ make migrate                      # drift DB migrations after schema changes
   playlist endpoints, else the first artist's top songs; asked once per last song (`radioAskedFor`; it used
   to re-ask on every queue/index change). Log `Endless playback: N songs from "<name> Radio"`.
   Tests: `test/services/metadata/radio_test.dart`.
+- **Plugin 0.2.2's `api.spotify.com/v1` calls are refused (2026-10-21).** Only these use it: `artist.related`,
+  the details step of `user.savedAlbums`/`savedArtists` (`/v1/albums?ids=`, `/v1/artists?ids=`), `isPlaylistSaved`,
+  and playlist create/update/addTracks/removeTracks/follow/unfollow. Every read got 429 on the phone (Retry-After up
+  to 59 s, so ~95 s of retries, then an error); query-server (`api-partner.spotify.com/pathfinder`) calls never were.
+  `SpotifyGql` (`services/metadata/spotify_gql.dart`) posts persisted queries through the plugin's own logged-in
+  client (`metadataPlugin.api.gqlClient`, fetched per attempt: a login replaces it), through the same gate and
+  retries. Fans also like uses `queryArtistRelated` (40 artists, <2 s); Library Albums/Artists read the plugin's own
+  `libraryV3` reply directly (it already holds names, pictures, album artists); the playlist saved check looks the
+  playlist up in the Library playlists list, paging the rest itself. Each falls back to the plugin call on any
+  error. Do not page via the shared provider's `fetchAll()` inside a provider that watches it: it invalidates itself
+  and the answer waits for the next frame (6 minutes in a hidden window). `areEntitiesInLibrary` (plugin hash)
+  returns no saved flag for playlists. Proven on the Mac and the phone. Tests: `related_artists_gql_test.dart`,
+  `library_gql_test.dart`.
+- **Launch queue (2026-10-21).** `metadataPluginAuthenticatedProvider` rebuilt 3 times per launch (it watched the
+  whole plugin list and re-set state on every token refresh), and each rebuild reloaded home sections, new releases,
+  section items, profile and library lists. It now watches only "can this plugin log in" and sets state only on a
+  real change; sections/releases/section items await its `.future` (counted live: 1 build each). `checkUpdate`
+  (GitHub, 2-36 s) skips the 3-slot gate. Plugin calls over 2 s log `Plugin call '<name>' took N ms`.
 - "Alternative track sources": the phone page (`pages/player/sources.dart`) had no back button; and the
   sheet re-searched for versions on every rebuild when a song had none (5 searches in 2.6 s); now once per
   song (`siblingsFetchedFor`).

@@ -5,6 +5,7 @@ import 'package:spotube/provider/metadata_plugin/core/auth.dart';
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
 import 'package:spotube/provider/metadata_plugin/tracks/playlist.dart';
 import 'package:spotube/provider/metadata_plugin/utils/paginated.dart';
+import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/metadata/errors/exceptions.dart';
 
 class MetadataPluginSavedPlaylistsNotifier
@@ -136,14 +137,38 @@ final metadataPluginIsSavedPlaylistProvider =
       throw MetadataPluginException.noDefaultMetadataPlugin();
     }
 
-    // Local change: answer from what is already loaded, otherwise ask the
-    // API about this one playlist instead of downloading the whole library.
-    final loaded =
-        ref.watch(metadataPluginSavedPlaylistsProvider).asData?.value;
-    if (loaded != null) {
-      if (loaded.items.any((element) => element.id == id)) return true;
-      if (!loaded.hasMore) return false;
+    // Local change: answer from the Library playlists list, paging through
+    // the rest of it here when needed. That list comes from Spotify's query
+    // server; the plugin's own check asks the old API, which Spotify refuses
+    // (see SpotifyGql): live on the Mac, 2026-10-21, it failed after 87-120 s
+    // of retries every time, and the playlist page's heart never appeared.
+    // The extra pages are not added to the shared list: changing a list this
+    // provider watches would make it rebuild itself, and that rebuild waits
+    // for the next frame (6 minutes in a hidden window).
+    try {
+      final (found, hasMore, nextOffset) = await ref.watch(
+        metadataPluginSavedPlaylistsProvider.selectAsync(
+          (value) => (
+            value.items.any((e) => e.id == id),
+            value.hasMore,
+            value.nextOffset,
+          ),
+        ),
+      );
+      if (found) return true;
+      if (!hasMore) return false;
+      var offset = nextOffset ?? 0;
+      while (true) {
+        final page =
+            await plugin.user.savedPlaylists(offset: offset, limit: 50);
+        if (page.items.any((e) => e.id == id)) return true;
+        if (!page.hasMore || page.items.isEmpty) return false;
+        offset = page.nextOffset ?? offset + page.items.length;
+      }
+    } catch (e) {
+      AppLogger.log.w("Saved check for playlist $id: the Library list "
+          "failed, asking the plugin: $e");
+      return await plugin.user.isSavedPlaylist(id);
     }
-    return await plugin.user.isSavedPlaylist(id);
   },
 );

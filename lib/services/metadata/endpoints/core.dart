@@ -15,7 +15,11 @@ class MetadataPluginCore {
   Future<PluginUpdateAvailable?> checkUpdate(
     PluginConfiguration pluginConfig,
   ) async {
-    final result = await hetuMetadataPluginUpdater.invokeWithRetry(
+    // Local change: called directly, not through invokeWithRetry's gate.
+    // This asks GitHub, not Spotify, and it held one of the plugin's 3 slots
+    // for 2-36 s at every launch (Mac, 2026-10-21), so pages opened right
+    // after launch queued behind it.
+    final result = await hetuMetadataPluginUpdater.invoke(
       "checkUpdate",
       positionalArgs: [pluginConfig.toJson()],
     );

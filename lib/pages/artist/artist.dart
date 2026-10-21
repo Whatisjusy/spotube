@@ -2,12 +2,10 @@ import 'package:flutter/material.dart' as material;
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
-import 'package:shadcn_flutter/shadcn_flutter_extension.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:spotube/components/button/back_button.dart';
 
 import 'package:spotube/components/titlebar/titlebar.dart';
-import 'package:spotube/extensions/context.dart';
 import 'package:spotube/modules/artist/artist_album_list.dart';
 
 import 'package:spotube/pages/artist/section/footer.dart';
@@ -83,15 +81,6 @@ class ArtistPage extends HookConsumerWidget {
                   ArtistPageTopTracks(artistId: artistId),
                   const SliverGap(20),
                   SliverToBoxAdapter(child: ArtistAlbumList(artistId)),
-                  SliverPadding(
-                    padding: const EdgeInsets.all(8.0),
-                    sliver: SliverToBoxAdapter(
-                      child: Text(
-                        context.l10n.fans_also_like,
-                        style: context.theme.typography.h4,
-                      ),
-                    ),
-                  ),
                   ArtistPageRelatedArtists(artistId: artistId),
                   const SliverGap(20),
                   if (artistQuery.asData?.value != null)

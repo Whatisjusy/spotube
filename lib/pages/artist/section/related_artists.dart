@@ -1,8 +1,12 @@
 import 'package:shadcn_flutter/shadcn_flutter.dart';
+import 'package:shadcn_flutter/shadcn_flutter_extension.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:spotube/extensions/context.dart';
 import 'package:spotube/modules/artist/artist_card.dart';
 import 'package:spotube/provider/metadata_plugin/artist/related.dart';
 
+/// "Fans also like", heading included. Shows nothing when Spotify has no
+/// answer: the error text it used to show was a raw 429 message.
 class ArtistPageRelatedArtists extends ConsumerWidget {
   final String artistId;
   const ArtistPageRelatedArtists({
@@ -15,8 +19,9 @@ class ArtistPageRelatedArtists extends ConsumerWidget {
     final relatedArtists =
         ref.watch(metadataPluginArtistRelatedArtistsProvider(artistId));
 
-    return switch (relatedArtists) {
-      AsyncData(value: final artists) => SliverPadding(
+    final body = switch (relatedArtists) {
+      AsyncData(value: final artists) when artists.items.isNotEmpty =>
+        SliverPadding(
           padding: const EdgeInsets.symmetric(horizontal: 8.0),
           sliver: SliverGrid.builder(
             itemCount: artists.items.length,
@@ -36,14 +41,27 @@ class ArtistPageRelatedArtists extends ConsumerWidget {
             },
           ),
         ),
-      AsyncError(:final error) => SliverToBoxAdapter(
-          child: Center(
-            child: Text(error.toString()),
-          ),
-        ),
-      _ => const SliverToBoxAdapter(
+      AsyncLoading() => const SliverToBoxAdapter(
           child: Center(child: CircularProgressIndicator()),
         ),
+      _ => null,
     };
+
+    if (body == null) return const SliverToBoxAdapter(child: SizedBox());
+
+    return SliverMainAxisGroup(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.all(8.0),
+          sliver: SliverToBoxAdapter(
+            child: Text(
+              context.l10n.fans_also_like,
+              style: context.theme.typography.h4,
+            ),
+          ),
+        ),
+        body,
+      ],
+    );
   }
 }
